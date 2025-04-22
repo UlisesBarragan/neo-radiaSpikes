@@ -23,7 +23,6 @@ interface SidebarProps {
 export default function Sidebar({ studies, currentStudy, setCurrentStudy }: SidebarProps) {
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Utilizamos useMemo para memorizar el resultado del filtro
   const filteredStudies = useMemo(() => {
     return studies.filter(
       (study) =>
