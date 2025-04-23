@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import DicomViewer from "@/components/DicomViewer";
@@ -18,21 +17,22 @@ export default function Index() {
   const [currentStudy, setCurrentStudy] = useState<Study | null>(null);
 
   useEffect(() => {
-    // Simulación de carga de estudios (puedes reemplazarlo con datos reales)
+    // Estudio real usando imagen DICOM desde S3
     const mockStudies = [
       {
         id: "1",
         patientName: "Juan Pérez",
         patientId: "P12345",
-        studyDate: "2023-10-15",
+        studyDate: "2024-04-02",
         modality: "CT",
-        description: "Tomografía de tórax",
-        images: ["/sample-dicom-1.dcm", "/sample-dicom-2.dcm"],
-      }
-      // Si deseas agregar varios puedes hacerlo, pero SOLO se mostrará el primero (el estudio activo)
+        description: "Tomografía desde S3",
+        images: [
+          "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_1.dcm"
+        ],
+      },
     ];
 
-    setCurrentStudy(mockStudies[0]); // Solo mostrar el primer estudio
+    setCurrentStudy(mockStudies[0]);
   }, []);
 
   const handleShareStudy = () => {
@@ -60,24 +60,25 @@ export default function Index() {
       title: `Exportando como ${format.toUpperCase()}`,
       description: "El archivo se descargará en breve",
     });
-    // Aquí iría la lógica de exportación (PNG, JPEG, PDF, etc.)
+    // Lógica de exportación (a implementar si deseas)
   };
 
   return (
     <main className="flex flex-col h-screen bg-background">
       {/* Header */}
-      <Header currentStudy={currentStudy} onShare={handleShareStudy} onExport={handleExportImage} />
+      <Header
+        currentStudy={currentStudy}
+        onShare={handleShareStudy}
+        onExport={handleExportImage}
+      />
 
       <div className="flex-1 overflow-hidden flex">
-        {/* Se elimina el sidebar, sólo vista central */}
         <div className="flex-1 overflow-hidden">
           {currentStudy ? (
             <DicomViewer study={currentStudy} />
           ) : (
             <div className="flex justify-center items-center h-full bg-accent/20">
-              <p className="text-muted-foreground">
-                {"Cargando estudio..."}
-              </p>
+              <p className="text-muted-foreground">{"Cargando estudio..."}</p>
             </div>
           )}
         </div>
@@ -85,4 +86,3 @@ export default function Index() {
     </main>
   );
 }
-
