@@ -47,7 +47,6 @@ export default function DicomViewer({ study }: DicomViewerProps) {
   const [windowWidth, setWindowWidth] = useState(50);
   const [activeTab, setActiveTab] = useState("window");
 
-  // Cargar imagen DICOM con Cornerstone
   useEffect(() => {
     if (!study || !cornerstoneElementRef.current) return;
 
@@ -75,58 +74,41 @@ export default function DicomViewer({ study }: DicomViewerProps) {
     };
   }, [study, currentImageIndex, zoom, rotation, windowLevel, windowWidth]);
 
-  // Dibujo sobre canvas
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = annotationCanvasRef.current;
     if (!canvas) return;
-
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) * (canvas.width / rect.width);
     const y = (e.clientY - rect.top) * (canvas.height / rect.height);
-
     setIsDrawing(true);
     setLastPosition({ x, y });
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
-
     const canvas = annotationCanvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas?.getContext("2d");
     if (!ctx) return;
-
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) * (canvas.width / rect.width);
     const y = (e.clientY - rect.top) * (canvas.height / rect.height);
-
     ctx.beginPath();
     ctx.strokeStyle = "#FF0000";
     ctx.lineWidth = 2;
     ctx.moveTo(lastPosition.x, lastPosition.y);
     ctx.lineTo(x, y);
     ctx.stroke();
-
     setLastPosition({ x, y });
   };
 
-  const stopDrawing = () => {
-    setIsDrawing(false);
-  };
+  const stopDrawing = () => setIsDrawing(false);
 
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.1, 3));
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.1, 0.5));
   const handleRotateClockwise = () => setRotation((prev) => prev + 90);
   const handleRotateCounterClockwise = () => setRotation((prev) => prev - 90);
-  const handleNextImage = () => {
-    if (study && currentImageIndex < study.images.length - 1)
-      setCurrentImageIndex((prev) => prev + 1);
-  };
-  const handlePrevImage = () => {
-    if (study && currentImageIndex > 0)
-      setCurrentImageIndex((prev) => prev - 1);
-  };
+  const handleNextImage = () => setCurrentImageIndex((prev) => Math.min(prev + 1, study.images.length - 1));
+  const handlePrevImage = () => setCurrentImageIndex((prev) => Math.max(prev - 1, 0));
 
   const handleResetView = () => {
     setZoom(1);
@@ -137,92 +119,91 @@ export default function DicomViewer({ study }: DicomViewerProps) {
 
   const handleClearAnnotations = () => {
     const canvas = annotationCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas?.getContext("2d");
     ctx?.clearRect(0, 0, canvas.width, canvas.height);
   };
-  
-  const exportAsJPG = () => {
-    const canvas = document.querySelector("canvas");
-    if (!canvas) {
-      alert("No se encontró la imagen para exportar.");
-      return;
-    }
-  
-    const image = canvas.toDataURL("image/jpeg", 1.0); // calidad al 100%
-  
-    const link = document.createElement("a");
-    link.href = image;
-    link.download = "imagen_dicom.jpg";
-    link.click();
+
+  const exportCanvas = () => {
+    const baseCanvas = cornerstoneElementRef.current?.querySelector("canvas");
+    const annotationCanvas = annotationCanvasRef.current;
+    if (!baseCanvas || !annotationCanvas) return null;
+    const merged = document.createElement("canvas");
+    merged.width = baseCanvas.width;
+    merged.height = baseCanvas.height;
+    const ctx = merged.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(baseCanvas, 0, 0);
+    ctx.drawImage(annotationCanvas, 0, 0);
+    return merged;
   };
+
+  const exportAs = (format: "jpg" | "png" | "pdf") => {
+    const merged = exportCanvas();
+    if (!merged) return alert("No se pudo generar la imagen.");
+    const dataUrl = merged.toDataURL(format === "pdf" ? "image/jpeg" : `image/${format}`);
+    if (format === "pdf") {
+      const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [merged.width, merged.height] });
+      pdf.addImage(dataUrl, "JPEG", 0, 0, merged.width, merged.height);
+      pdf.save("imagen_dicom.pdf");
+    } else {
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `imagen_dicom.${format}`;
+      link.click();
+    }
+  };
+
+  useEffect(() => {
+    const jpgHandler = () => exportAs("jpg");
+    const pngHandler = () => exportAs("png");
+    const pdfHandler = () => exportAs("pdf");
+    document.addEventListener("export-jpg", jpgHandler);
+    document.addEventListener("export-png", pngHandler);
+    document.addEventListener("export-pdf", pdfHandler);
+    return () => {
+      document.removeEventListener("export-jpg", jpgHandler);
+      document.removeEventListener("export-png", pngHandler);
+      document.removeEventListener("export-pdf", pdfHandler);
+    };
+  }, []);
 
   if (!study) return null;
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-grow relative overflow-hidden bg-black">
-        <div
-          ref={cornerstoneElementRef}
-          className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
-          style={{ width: 800, height: 800, backgroundColor: "black" }}
-        />
-
-        <canvas
-          ref={annotationCanvasRef}
-          width={800}
-          height={800}
-          className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
-          style={{ cursor: "crosshair" }}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={stopDrawing}
-          onMouseLeave={stopDrawing}
-        />
-
-        <div className="absolute left-1/2 bottom-0 transform -translate-x-1/2 flex items-center gap-2 glass-panel rounded-full px-4 py-1 mb-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="p-1 hover:bg-white/20"
-            onClick={handlePrevImage}
-            disabled={currentImageIndex === 0}
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-
-          <span className="text-sm font-medium text-white px-2">
-            {currentImageIndex + 1} / {study.images.length}
-          </span>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="p-1 hover:bg-white/20"
-            onClick={handleNextImage}
-            disabled={currentImageIndex === study.images.length - 1}
-          >
-            <ChevronRight className="h-5 w-5" />
-          </Button>
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      <div className="px-6 py-4 bg-white border-b shadow-sm flex justify-between items-center">
+        <div>
+          <h1 className="text-xl font-semibold text-blue-700">NeoRadia</h1>
+          <p className="text-sm text-gray-500">
+            {study.patientName} | {study.patientId} | {study.modality}: {study.description}
+          </p>
         </div>
-
-        <div className="absolute top-3 right-3 flex flex-col gap-2">
-          <Button variant="secondary" size="icon" className="glass-panel" onClick={handleZoomIn}>
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-          <Button variant="secondary" size="icon" className="glass-panel" onClick={handleZoomOut}>
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <Button variant="secondary" size="icon" className="glass-panel" onClick={handleRotateClockwise}>
-            <RotateCw className="h-4 w-4" />
-          </Button>
-          <Button variant="secondary" size="icon" className="glass-panel" onClick={handleRotateCounterClockwise}>
-            <RotateCcw className="h-4 w-4" />
-          </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleClearAnnotations}>🧹 Limpiar</Button>
+          <Button variant="outline" size="sm" onClick={() => document.dispatchEvent(new CustomEvent("export-jpg"))}>🖼 JPG</Button>
+          <Button variant="outline" size="sm" onClick={() => document.dispatchEvent(new CustomEvent("export-png"))}>📷 PNG</Button>
+          <Button variant="default" size="sm" onClick={() => document.dispatchEvent(new CustomEvent("export-pdf"))}>📄 PDF</Button>
         </div>
       </div>
 
-      <div className="border-t border-border bg-card p-4">
+      <div className="flex-1 flex justify-center items-center p-4">
+        <div className="relative rounded-lg shadow-lg bg-black" style={{ width: 700, height: 700 }}>
+          <div ref={cornerstoneElementRef} className="w-full h-full rounded-lg" />
+          <canvas
+            ref={annotationCanvasRef}
+            width={700}
+            height={700}
+            className="absolute top-0 left-0 z-10"
+            style={{ cursor: "crosshair" }}
+            onMouseDown={startDrawing}
+            onMouseMove={draw}
+            onMouseUp={stopDrawing}
+            onMouseLeave={stopDrawing}
+          />
+        </div>
+      </div>
+
+      <section className="bg-white border-t p-6 rounded-t-xl shadow-md">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="window">Ventana</TabsTrigger>
@@ -230,78 +211,50 @@ export default function DicomViewer({ study }: DicomViewerProps) {
             <TabsTrigger value="info">Información</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="window" className="space-y-4 pt-3">
+          <TabsContent value="window" className="space-y-4 pt-4">
             <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Nivel de ventana</span>
-                <span className="text-sm font-medium">{windowLevel}%</span>
-              </div>
-              <Slider
-                value={[windowLevel]}
-                min={0}
-                max={100}
-                step={1}
-                onValueChange={(values) => setWindowLevel(values[0])}
-              />
+              <label className="flex justify-between text-sm">
+                <span>Nivel de ventana</span>
+                <span className="font-medium">{windowLevel}%</span>
+              </label>
+              <Slider value={[windowLevel]} min={0} max={100} step={1} onValueChange={(v) => setWindowLevel(v[0])} />
             </div>
-
             <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Ancho de ventana</span>
-                <span className="text-sm font-medium">{windowWidth}%</span>
-              </div>
-              <Slider
-                value={[windowWidth]}
-                min={0}
-                max={100}
-                step={1}
-                onValueChange={(values) => setWindowWidth(values[0])}
-              />
+              <label className="flex justify-between text-sm">
+                <span>Ancho de ventana</span>
+                <span className="font-medium">{windowWidth}%</span>
+              </label>
+              <Slider value={[windowWidth]} min={0} max={100} step={1} onValueChange={(v) => setWindowWidth(v[0])} />
             </div>
-
             <div className="flex justify-end">
-              <Button variant="outline" size="sm" onClick={handleResetView}>
-                Restablecer valores
-              </Button>
+              <Button variant="ghost" size="sm" onClick={handleResetView}>🔄 Restablecer</Button>
             </div>
           </TabsContent>
 
-          <TabsContent value="annotations" className="space-y-4 pt-3">
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" size="sm" onClick={handleClearAnnotations}>
-                Limpiar anotaciones
-              </Button>
-              <Button variant="outline" size="sm">
-                Guardar anotaciones
-              </Button>
-            </div>
-
-            <div className="text-sm text-muted-foreground mt-3">
-              <p>Haga clic y arrastre para dibujar sobre la imagen.</p>
-              <p>Las anotaciones se guardarán con el estudio.</p>
+          <TabsContent value="annotations" className="pt-4">
+            <p className="text-sm text-gray-500 mb-2">Haz clic y arrastra para dibujar sobre la imagen. Las anotaciones serán guardadas con el estudio.</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleClearAnnotations}>🧹 Limpiar</Button>
+              <Button variant="outline" size="sm">💾 Guardar</Button>
             </div>
           </TabsContent>
 
-          <TabsContent value="info" className="pt-3">
+          <TabsContent value="info" className="pt-4">
             <dl className="grid grid-cols-4 gap-y-2 text-sm">
-              <dt className="col-span-1 font-medium">Paciente:</dt>
+              <dt className="font-medium">Paciente:</dt>
               <dd className="col-span-3">{study.patientName}</dd>
-
-              <dt className="col-span-1 font-medium">ID:</dt>
+              <dt className="font-medium">ID:</dt>
               <dd className="col-span-3">{study.patientId}</dd>
-
-              <dt className="col-span-1 font-medium">Modalidad:</dt>
+              <dt className="font-medium">Modalidad:</dt>
               <dd className="col-span-3">{study.modality}</dd>
-
-              <dt className="col-span-1 font-medium">Descripción:</dt>
+              <dt className="font-medium">Descripción:</dt>
               <dd className="col-span-3">{study.description}</dd>
-
-              <dt className="col-span-1 font-medium">Fecha:</dt>
+              <dt className="font-medium">Fecha:</dt>
               <dd className="col-span-3">{study.studyDate}</dd>
             </dl>
           </TabsContent>
         </Tabs>
-      </div>
+      </section>
     </div>
   );
 }
