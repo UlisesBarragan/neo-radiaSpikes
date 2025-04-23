@@ -4,9 +4,30 @@ import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Share, Download, FileText, MessageSquare, MessageSquareReply, History } from "lucide-react";
+import { Share, Download, FileText, MessageSquare, MessageSquareReply, History, UserRound } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
+
+// Cambia aquí: Añade el nombre del médico con su email
+const mockSharedHistory = [
+  {
+    id: "1",
+    sharedWith: [
+      { name: "Dr. Martín Díaz", email: "m.diazm@hospital.com" },
+      { name: "Dra. María Pérez", email: "m.perez@mediclinic.com" }
+    ],
+    date: "2024-04-14",
+    description: "Tomografía de tórax compartida con médico",
+  },
+  {
+    id: "2",
+    sharedWith: [
+      { name: "Dr. Álvaro Castro", email: "dr.castro@hospital.com" }
+    ],
+    date: "2023-10-10",
+    description: "Estudio MRI compartido con médico",
+  }
+];
 
 interface Study {
   id: string;
@@ -27,21 +48,6 @@ interface Study {
   sharedWith?: string[];
 }
 
-const mockSharedHistory = [
-  {
-    id: "1",
-    sharedWith: ["m.diazm@hospital.com", "m.perez@mediclinic.com"],
-    date: "2024-04-14",
-    description: "Tomografía de tórax compartida",
-  },
-  {
-    id: "2",
-    sharedWith: ["dr.castro@hospital.com"],
-    date: "2023-10-10",
-    description: "Estudio MRI compartido",
-  }
-];
-
 export default function UserView() {
   const { userId } = useParams();
   const [study, setStudy] = useState<Study | null>(null);
@@ -50,11 +56,12 @@ export default function UserView() {
   const [replyText, setReplyText] = useState<string>("");
   const [commentReplyIndex, setCommentReplyIndex] = useState<number | null>(null);
 
+  // Estado temporal para simular si ya fue compartido con el médico
+  const [sharedWithDoctor, setSharedWithDoctor] = useState(false);
+
   useEffect(() => {
-    // Simulación de carga de datos del estudio
     setIsLoading(true);
     setTimeout(() => {
-      // En una aplicación real, esto vendría de una API
       const mockStudy: Study = {
         id: "1",
         patientName: "Juan Pérez",
@@ -91,24 +98,24 @@ export default function UserView() {
     }, 1000);
   }, [userId]);
 
+  // Compartir general (solo PDF/JPG)
   const handleShare = () => {
-    const shareLink = `https://neoradia.com/share/${study?.id}?patient=${userId}`;
-    
-    navigator.clipboard
-      .writeText(shareLink)
-      .then(() => {
-        toast({
-          title: "Enlace copiado",
-          description: "El enlace para compartir ha sido copiado al portapapeles",
-        });
-      })
-      .catch(() => {
-        toast({
-          title: "Error",
-          description: "No se pudo copiar el enlace",
-          variant: "destructive",
-        });
-      });
+    toast({
+      title: "Solo puedes compartir imágenes o PDF al público general",
+      description: "Selecciona si deseas compartir JPG o PDF",
+    });
+    // Aquí podrías abrir un modal o desplegar una opción para compartir JPG/PDF,
+    // por simplicidad solo mostramos un toast.
+  };
+
+  // Compartir con médico
+  const handleShareWithDoctor = () => {
+    setSharedWithDoctor(true);
+    toast({
+      title: "Estudio compartido con el médico",
+      description: "El médico ahora tiene acceso a tu estudio completo.",
+    });
+    // Aquí iría la lógica real para compartir el estudio con el médico autorizado
   };
 
   const handleDownload = (format: string) => {
@@ -116,10 +123,9 @@ export default function UserView() {
       title: `Descargando en formato ${format.toUpperCase()}`,
       description: "El archivo se descargará en breve",
     });
-    // En una aplicación real, aquí iría la lógica para descargar el archivo
+    // Lógica real de descarga
   };
 
-  // Permite al paciente responder a un comentario de médico
   const handleReply = (index: number) => {
     if (!replyText.trim()) {
       toast({
@@ -168,9 +174,20 @@ export default function UserView() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold text-primary">NeoRadia</h1>
           <div className="flex items-center gap-3">
+            {/* Botón solo para compartir con el médico */}
+            <Button
+              variant={sharedWithDoctor ? "secondary" : "default"}
+              size="sm"
+              onClick={handleShareWithDoctor}
+              disabled={sharedWithDoctor}
+            >
+              <UserRound className="mr-2 h-4 w-4" />
+              {sharedWithDoctor ? "Compartido con médico" : "Compartir con médico"}
+            </Button>
+            {/* Compartir público general, solo PDF/JPG */}
             <Button variant="outline" size="sm" onClick={handleShare}>
               <Share className="mr-2 h-4 w-4" />
-              Compartir
+              Compartir público (PDF/JPG)
             </Button>
             <Button variant="default" size="sm" onClick={() => handleDownload("pdf")}>
               <Download className="mr-2 h-4 w-4" />
@@ -182,7 +199,7 @@ export default function UserView() {
 
       <div className="container max-w-6xl mx-auto p-4 space-y-6">
 
-        {/* Historial de archivos compartidos */}
+        {/* Historial de archivos compartidos solo para el paciente */}
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center mb-3 gap-2">
@@ -204,8 +221,12 @@ export default function UserView() {
                       <td className="px-2 py-1">{new Date(h.date).toLocaleDateString("es-ES")}</td>
                       <td className="px-2 py-1">{h.description}</td>
                       <td className="px-2 py-1">
-                        {h.sharedWith.map((email, i) => (
-                          <span key={i} className="inline-block bg-muted/80 rounded px-2 py-0.5 mr-1">{email}</span>
+                        {h.sharedWith.map((item, i) => (
+                          <div key={i} className="flex items-center gap-2 mb-1">
+                            <UserRound className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">{item.name}</span>
+                            <span className="text-xs text-muted-foreground ml-1">({item.email})</span>
+                          </div>
                         ))}
                       </td>
                     </tr>
@@ -246,7 +267,6 @@ export default function UserView() {
                             </span>
                           </div>
                           <div className="ml-2">
-                            {/* Mostrar respuestas del paciente */}
                             {comment.replies.map((reply, rIdx) => (
                               <div key={rIdx} className="flex gap-2 mb-1 items-center">
                                 <MessageSquareReply className="h-4 w-4 text-primary" />
@@ -257,7 +277,6 @@ export default function UserView() {
                               </div>
                             ))}
                           </div>
-                          {/* Formulario de respuesta */}
                           {commentReplyIndex === index ? (
                             <div className="mt-2 space-y-2">
                               <Textarea
