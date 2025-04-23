@@ -149,6 +149,7 @@ export default function UserView() {
   };
 
   const [shareEmailDialog, setShareEmailDialog] = useState(false);
+  const [emailFormat, setEmailFormat] = useState<"pdf" | "png">("pdf");
   const [doctorEmail, setDoctorEmail] = useState("");
 
   if (isLoading) {
@@ -251,53 +252,37 @@ export default function UserView() {
           </div>
 
           <DialogFooter className="pt-4">
-            <Button
-              onClick={async () => {
-                if (!whatsappNumber || whatsappNumber.length !== 10) {
-                  toast({
-                    title: "Número inválido",
-                    description: "Ingresa un número válido de 10 dígitos.",
-                    variant: "destructive",
-                  });
-                  return;
-                }
+          <Button
+  onClick={() => {
+    if (!whatsappNumber || whatsappNumber.length !== 10) {
+      toast({
+        title: "Número inválido",
+        description: "Ingresa un número válido de 10 dígitos.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-                try {
-                  const response = await fetch(
-                    shareFormat === "pdf" ? study?.files.pdf || "" : study?.files.jpg?.[0] || ""
-                  );
-                  const blob = await response.blob();
+    const link =
+      shareFormat === "pdf"
+        ? study?.files.pdf
+        : study?.files.jpg?.[0] || "";
 
-                  const file = new File(
-                    [blob],
-                    `estudio-${study?.patientId}.${shareFormat}`,
-                    { type: blob.type }
-                  );
+    const message = `Hola 👋, te comparto el estudio médico (${shareFormat.toUpperCase()}): ${link}`;
+    const whatsappURL = `https://api.whatsapp.com/send?phone=52${whatsappNumber}&text=${encodeURIComponent(message)}`;
 
-                  const uploadedUrl = await uploadToS3(file, file.name);
+    window.open(whatsappURL, "_blank");
 
-                  const message = `Hola 👋, te comparto el estudio médico (${shareFormat.toUpperCase()}): ${uploadedUrl}`;
-                  const whatsappURL = `https://api.whatsapp.com/send?phone=52${whatsappNumber}&text=${encodeURIComponent(message)}`;
-                  window.open(whatsappURL, "_blank");
+    toast({
+      title: "Compartiendo...",
+      description: `Abriendo WhatsApp con el enlace en formato ${shareFormat.toUpperCase()}`,
+    });
 
-                  toast({
-                    title: "Archivo compartido",
-                    description: "Se ha subido y enviado el estudio vía WhatsApp.",
-                  });
-
-                  setShowShareDialog(false);
-                } catch (error) {
-                  console.error(error);
-                  toast({
-                    title: "Error al subir o enviar",
-                    description: "No se pudo compartir el archivo.",
-                    variant: "destructive",
-                  });
-                }
-              }}
-            >
-              Enviar por WhatsApp
-            </Button>
+    setShowShareDialog(false);
+  }}
+>
+  Enviar por WhatsApp
+</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -316,6 +301,22 @@ export default function UserView() {
         value={doctorEmail}
         onChange={(e) => setDoctorEmail(e.target.value)}
       />
+      <div className="space-y-3">
+  <div className="flex gap-2">
+    <Button
+      variant={emailFormat === "png" ? "default" : "outline"}
+      onClick={() => setEmailFormat("png")}
+    >
+      PNG
+    </Button>
+    <Button
+      variant={emailFormat === "pdf" ? "default" : "outline"}
+      onClick={() => setEmailFormat("pdf")}
+    >
+      PDF
+    </Button>
+  </div>
+</div>
     </div>
 
     <DialogFooter className="pt-4">
@@ -329,26 +330,39 @@ export default function UserView() {
       });
       return;
     }
-
-    const fileUrl =
-      shareFormat === "pdf"
-        ? study?.files.pdf
-        : study?.files.jpg?.[0] || "";
-
+  
+    const canvas = document.querySelector("canvas") as HTMLCanvasElement;
+    if (!canvas) {
+      toast({
+        title: "Error",
+        description: "No se encontró el canvas del estudio.",
+        variant: "destructive",
+      });
+      return;
+    }
+  
+    const dataURL = canvas.toDataURL(
+      emailFormat === "png" ? "image/png" : "image/jpeg"
+    );
+  
+    const attachmentLink = dataURL;
     const mailSubject = `Estudio médico del paciente ${study?.patientName}`;
-    const mailBody = `Hola doctor,\n\nAquí está el estudio médico del paciente ${study?.patientName} (${shareFormat.toUpperCase()}):\n\n${fileUrl}\n\nSaludos.`;
-
+    const mailBody = `Hola doctor,\n\nAdjunto encontrará el estudio médico del paciente ${
+      study?.patientName
+    } en formato ${emailFormat.toUpperCase()}.\n\nNota: Copia el siguiente enlace y pégalo en tu navegador para descargarlo:\n\n${attachmentLink}\n\nSaludos.`;
+  
     const mailtoLink = `mailto:${doctorEmail}?subject=${encodeURIComponent(
       mailSubject
     )}&body=${encodeURIComponent(mailBody)}`;
-
+  
     window.open(mailtoLink, "_blank");
-
+  
     toast({
       title: "Correo preparado",
-      description: "Se ha abierto tu app de correo con el estudio listo para enviar.",
+      description:
+        "Se ha abierto tu app de correo con el estudio generado como enlace.",
     });
-
+  
     setShareEmailDialog(false);
     setDoctorEmail("");
   }}
