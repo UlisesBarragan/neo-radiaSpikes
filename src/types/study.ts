@@ -16,6 +16,7 @@ export interface Study {
     jpg: string[];
   };
   sharedWith?: string[];
+  images?: string[];
 }
 
 export interface SharedHistory {

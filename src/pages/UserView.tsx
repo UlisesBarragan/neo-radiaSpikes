@@ -9,7 +9,6 @@ import StudyViewer from "@/components/StudyViewer";
 import type { Study, SharedHistory } from "@/types/study";
 import { Card, CardContent } from "@/components/ui/card";
 
-// Historial compartido de ejemplo
 const mockSharedHistory: SharedHistory[] = [
   {
     id: "1",
@@ -19,14 +18,6 @@ const mockSharedHistory: SharedHistory[] = [
     ],
     date: "2024-04-14",
     description: "Tomografía de tórax compartida con médico",
-  },
-  {
-    id: "2",
-    sharedWith: [
-      { name: "Dr. Álvaro Castro", email: "dr.castro@hospital.com" },
-    ],
-    date: "2023-10-10",
-    description: "Estudio MRI compartido con médico",
   },
 ];
 
@@ -39,6 +30,7 @@ export default function UserView() {
 
   useEffect(() => {
     setIsLoading(true);
+    // Simulación de fetch desde una API real
     setTimeout(() => {
       const mockStudy: Study = {
         id: "1",
@@ -55,28 +47,24 @@ export default function UserView() {
             ],
             date: "2024-03-20",
           },
-          {
-            text: "No hay hallazgos significativos que requieran atención inmediata.",
-            replies: [],
-            date: "2024-03-20",
-          },
-          {
-            text: "Recomiendo seguimiento en 6 meses.",
-            replies: [],
-            date: "2024-03-20",
-          },
         ],
         files: {
-          pdf: "/sample-report.pdf",
-          jpg: ["/sample-image-1.jpg", "/sample-image-2.jpg"],
+          pdf: "https://neoradia.s3.us-east-2.amazonaws.com/reportes/estudio-1.pdf",
+          jpg: [
+            "https://neoradia.s3.us-east-2.amazonaws.com/jpgs/estudio1_1.jpg",
+            "https://neoradia.s3.us-east-2.amazonaws.com/jpgs/estudio1_2.jpg",
+          ],
         },
+        images: [
+          // 👇 DICOM real desde S3
+          "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_1.dcm"
+        ],
       };
       setStudy(mockStudy);
       setIsLoading(false);
     }, 1000);
   }, [userId]);
 
-  // Compartir general (solo PDF/JPG)
   const handleShare = () => {
     toast({
       title: "Solo puedes compartir imágenes o PDF al público general",
@@ -84,7 +72,6 @@ export default function UserView() {
     });
   };
 
-  // Compartir con médico (aparece especial y solo el paciente puede hacerlo)
   const handleShareWithDoctor = () => {
     setSharedWithDoctor(true);
     toast({
@@ -98,6 +85,11 @@ export default function UserView() {
       title: `Descargando en formato ${format.toUpperCase()}`,
       description: "El archivo se descargará en breve",
     });
+    if (format === "pdf") {
+      window.open(study?.files.pdf, "_blank");
+    } else if (format === "jpg") {
+      study?.files.jpg.forEach((url) => window.open(url, "_blank"));
+    }
   };
 
   const handleReply = (index: number, replyText: string) => {

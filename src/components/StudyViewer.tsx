@@ -1,8 +1,15 @@
-
-import React from "react";
+import React, { useEffect, useRef } from "react";
+import cornerstone from "cornerstone-core";
+import cornerstoneWADOImageLoader from "cornerstone-wado-image-loader";
+import dicomParser from "dicom-parser";
+import { jsPDF } from "jspdf";
 import { Button } from "@/components/ui/button";
-import { Download, FileText } from "lucide-react";
+import { Download } from "lucide-react";
 import type { Study } from "@/types/study";
+
+cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
+cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
+cornerstoneWADOImageLoader.configure({ useWebWorkers: true });
 
 interface Props {
   study: Study;
@@ -17,45 +24,84 @@ export default function StudyViewer({
   setActiveFormat,
   onDownload,
 }: Props) {
+  const cornerstoneElementRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!study.images || study.images.length === 0) return;
+
+    const element = cornerstoneElementRef.current;
+    if (!element) return;
+
+    cornerstone.enable(element);
+    const imageId = `wadouri:${study.images[0]}`;
+
+    cornerstone
+      .loadImage(imageId)
+      .then((image) => {
+        const viewport = cornerstone.getDefaultViewportForImage(element, image);
+        cornerstone.displayImage(element, image, viewport);
+      })
+      .catch(console.error);
+
+    return () => {
+      cornerstone.disable(element);
+    };
+  }, [study.images]);
+
+  const exportAsPNG = () => {
+    const canvas = cornerstoneElementRef.current?.querySelector("canvas") as HTMLCanvasElement;
+    if (!canvas) return;
+
+    const imgData = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.download = "estudio.png";
+    link.href = imgData;
+    link.click();
+  };
+
+  const exportAsPDF = () => {
+    const canvas = cornerstoneElementRef.current?.querySelector("canvas") as HTMLCanvasElement;
+    if (!canvas) return;
+
+    const imgData = canvas.toDataURL("image/jpeg", 1.0);
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "px",
+      format: [canvas.width, canvas.height],
+    });
+
+    pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height);
+    pdf.save("estudio.pdf");
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold">Visualización</h3>
+        <h3 className="text-lg font-semibold">Visualización del Estudio</h3>
         <div className="flex gap-2">
-          <Button variant={activeFormat === "jpg" ? "default" : "outline"} size="sm" onClick={() => setActiveFormat("jpg")}>Imágenes</Button>
-          <Button variant={activeFormat === "pdf" ? "default" : "outline"} size="sm" onClick={() => setActiveFormat("pdf")}>Reporte PDF</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportAsPNG}
+          >
+            <Download className="mr-1 h-4 w-4" />
+            Exportar como PNG
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={exportAsPDF}
+          >
+            <Download className="mr-1 h-4 w-4" />
+            Exportar como PDF
+          </Button>
         </div>
       </div>
-      {activeFormat === "jpg" && (
-        <div className="grid gap-4 md:grid-cols-2 mt-4">
-          {study.files.jpg.map((img, index) => (
-            <div key={index} className="bg-black rounded-md overflow-hidden">
-              <img
-                src={`https://via.placeholder.com/600x400?text=Imagen+${index + 1}`}
-                alt={`Imagen ${index + 1}`}
-                className="w-full h-auto"
-              />
-              <div className="p-2 flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={() => onDownload("jpg")}>
-                  <Download className="h-4 w-4 mr-1" /> JPG
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {activeFormat === "pdf" && (
-        <div className="aspect-[3/4] bg-muted rounded-md overflow-hidden flex items-center justify-center mt-4">
-          <div className="text-center">
-            <FileText className="h-20 w-20 mx-auto text-muted-foreground" />
-            <p className="mt-4 text-muted-foreground">Vista previa del PDF</p>
-            <Button className="mt-4" onClick={() => onDownload("pdf")}>
-              <Download className="mr-2 h-4 w-4" />
-              Descargar PDF
-            </Button>
-          </div>
-        </div>
-      )}
+
+      <div
+        ref={cornerstoneElementRef}
+        className="w-full max-w-[800px] mx-auto h-[800px] bg-black rounded shadow-md"
+      />
     </div>
   );
 }
