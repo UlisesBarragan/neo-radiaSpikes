@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import cornerstone from "cornerstone-core";
 import cornerstoneWADOImageLoader from "cornerstone-wado-image-loader";
 import dicomParser from "dicom-parser";
+import jsPDF from "jspdf";
 import {
   ZoomIn,
   ZoomOut,
@@ -139,6 +140,21 @@ export default function DicomViewer({ study }: DicomViewerProps) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     ctx?.clearRect(0, 0, canvas.width, canvas.height);
+  };
+  
+  const exportAsJPG = () => {
+    const canvas = document.querySelector("canvas");
+    if (!canvas) {
+      alert("No se encontró la imagen para exportar.");
+      return;
+    }
+  
+    const image = canvas.toDataURL("image/jpeg", 1.0); // calidad al 100%
+  
+    const link = document.createElement("a");
+    link.href = image;
+    link.download = "imagen_dicom.jpg";
+    link.click();
   };
 
   if (!study) return null;
