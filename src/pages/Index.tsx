@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from "react";
 import Header from "@/components/Header";
-import Sidebar from "@/components/Sidebar";
 import DicomViewer from "@/components/DicomViewer";
 import { toast } from "@/hooks/use-toast";
 
@@ -17,7 +16,6 @@ interface Study {
 
 export default function Index() {
   const [currentStudy, setCurrentStudy] = useState<Study | null>(null);
-  const [studies, setStudies] = useState<Study[]>([]);
 
   useEffect(() => {
     // Simulación de carga de estudios (puedes reemplazarlo con datos reales)
@@ -30,38 +28,11 @@ export default function Index() {
         modality: "CT",
         description: "Tomografía de tórax",
         images: ["/sample-dicom-1.dcm", "/sample-dicom-2.dcm"],
-      },
-      {
-        id: "2",
-        patientName: "María González",
-        patientId: "P67890",
-        studyDate: "2023-11-20",
-        modality: "MRI",
-        description: "Resonancia magnética cerebral",
-        images: ["/sample-dicom-3.dcm"],
-      },
-      {
-        id: "3",
-        patientName: "Carlos Rodríguez",
-        patientId: "P24680",
-        studyDate: "2023-12-05",
-        modality: "XR",
-        description: "Radiografía de rodilla",
-        images: ["/sample-dicom-4.dcm", "/sample-dicom-5.dcm", "/sample-dicom-6.dcm"],
-      },
-      {
-        id: "4",
-        patientName: "Laura Sánchez",
-        patientId: "P13579",
-        studyDate: "2024-01-10",
-        modality: "US",
-        description: "Ecografía abdominal",
-        images: ["/sample-dicom-7.dcm", "/sample-dicom-8.dcm"],
       }
+      // Si deseas agregar varios puedes hacerlo, pero SOLO se mostrará el primero (el estudio activo)
     ];
 
-    setStudies(mockStudies);
-    setCurrentStudy(mockStudies[0]); // Establecer el primer estudio como activo
+    setCurrentStudy(mockStudies[0]); // Solo mostrar el primer estudio
   }, []);
 
   const handleShareStudy = () => {
@@ -75,7 +46,7 @@ export default function Index() {
           description: "El enlace para compartir ha sido copiado al portapapeles",
         });
       })
-      .catch((err) => {
+      .catch(() => {
         toast({
           title: "Error",
           description: "No se pudo copiar el enlace",
@@ -97,22 +68,15 @@ export default function Index() {
       {/* Header */}
       <Header currentStudy={currentStudy} onShare={handleShareStudy} onExport={handleExportImage} />
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <Sidebar 
-          studies={studies} 
-          currentStudy={currentStudy} 
-          setCurrentStudy={(study) => setCurrentStudy(study)} 
-        />
-
-        {/* DicomViewer */}
+      <div className="flex-1 overflow-hidden flex">
+        {/* Se elimina el sidebar, sólo vista central */}
         <div className="flex-1 overflow-hidden">
           {currentStudy ? (
             <DicomViewer study={currentStudy} />
           ) : (
             <div className="flex justify-center items-center h-full bg-accent/20">
               <p className="text-muted-foreground">
-                {studies.length === 0 ? "Cargando estudios..." : "Seleccione un estudio para visualizar"}
+                {"Cargando estudio..."}
               </p>
             </div>
           )}
@@ -121,3 +85,4 @@ export default function Index() {
     </main>
   );
 }
+
