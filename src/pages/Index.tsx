@@ -64,8 +64,11 @@ export default function Index() {
 
   return (
     <main className="flex flex-col h-screen bg-background">
+<<<<<<< HEAD
       {/* Header */}
 
+=======
+>>>>>>> 381209d56be8821d70248d0c05b70b283619d88b
       <div className="flex-1 overflow-hidden flex">
         <div className="flex-1 overflow-hidden">
           {currentStudy ? (
