@@ -1,13 +1,26 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { UserRound, Share, Download } from "lucide-react";
+import {
+  UserRound,
+  Share,
+  Download,
+} from "lucide-react";
 import SharedHistorySection from "@/components/SharedHistory";
 import DoctorComments from "@/components/DoctorComments";
 import StudyViewer from "@/components/StudyViewer";
 import type { Study, SharedHistory } from "@/types/study";
 import { Card, CardContent } from "@/components/ui/card";
+import { jsPDF } from "jspdf";
 
 const mockSharedHistory: SharedHistory[] = [
   {
@@ -26,11 +39,11 @@ export default function UserView() {
   const [study, setStudy] = useState<Study | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeFormat, setActiveFormat] = useState<"jpg" | "pdf">("jpg");
-  const [sharedWithDoctor, setSharedWithDoctor] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [contact, setContact] = useState("");
 
   useEffect(() => {
     setIsLoading(true);
-    // Simulación de fetch desde una API real
     setTimeout(() => {
       const mockStudy: Study = {
         id: "1",
@@ -43,7 +56,10 @@ export default function UserView() {
           {
             text: "El paciente muestra mejoría respecto al estudio anterior.",
             replies: [
-              { text: "Gracias doctor. Tomaré en cuenta la recomendación.", date: "2024-03-21" },
+              {
+                text: "Gracias doctor. Tomaré en cuenta la recomendación.",
+                date: "2024-03-21",
+              },
             ],
             date: "2024-03-20",
           },
@@ -56,8 +72,7 @@ export default function UserView() {
           ],
         },
         images: [
-          // 👇 DICOM real desde S3
-          "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_1.dcm"
+          "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_1.dcm",
         ],
       };
       setStudy(mockStudy);
@@ -65,31 +80,34 @@ export default function UserView() {
     }, 1000);
   }, [userId]);
 
-  const handleShare = () => {
-    toast({
-      title: "Solo puedes compartir imágenes o PDF al público general",
-      description: "Selecciona si deseas compartir JPG o PDF",
-    });
-  };
+  const exportCanvas = (format: "png" | "pdf") => {
+    const canvas = document.querySelector("canvas") as HTMLCanvasElement;
+    if (!canvas) return;
 
-  const handleShareWithDoctor = () => {
-    setSharedWithDoctor(true);
-    toast({
-      title: "Estudio compartido con el médico",
-      description: "El médico ahora tiene acceso a tu estudio completo.",
-    });
-  };
+    const dataURL = canvas.toDataURL(
+      format === "png" ? "image/png" : "image/jpeg",
+      1.0
+    );
 
-  const handleDownload = (format: "jpg" | "pdf") => {
-    toast({
-      title: `Descargando en formato ${format.toUpperCase()}`,
-      description: "El archivo se descargará en breve",
-    });
-    if (format === "pdf") {
-      window.open(study?.files.pdf, "_blank");
-    } else if (format === "jpg") {
-      study?.files.jpg.forEach((url) => window.open(url, "_blank"));
+    if (format === "png") {
+      const link = document.createElement("a");
+      link.href = dataURL;
+      link.download = "estudio.png";
+      link.click();
+    } else {
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "px",
+        format: [canvas.width, canvas.height],
+      });
+      pdf.addImage(dataURL, "JPEG", 0, 0, canvas.width, canvas.height);
+      pdf.save("estudio.pdf");
     }
+
+    toast({
+      title: `Exportado como ${format.toUpperCase()}`,
+      description: "El archivo se descargó correctamente.",
+    });
   };
 
   const handleReply = (index: number, replyText: string) => {
@@ -119,7 +137,9 @@ export default function UserView() {
   if (!study) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
-        <p className="text-muted-foreground">No se encontró ningún estudio para este ID.</p>
+        <p className="text-muted-foreground">
+          No se encontró ningún estudio para este ID.
+        </p>
       </div>
     );
   }
@@ -130,49 +150,89 @@ export default function UserView() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold text-primary">NeoRadia</h1>
           <div className="flex items-center gap-3">
-            <Button
-              variant={sharedWithDoctor ? "secondary" : "default"}
-              size="sm"
-              onClick={handleShareWithDoctor}
-              disabled={sharedWithDoctor}
-            >
-              <UserRound className="mr-2 h-4 w-4" />
-              {sharedWithDoctor ? "Compartido con médico" : "Compartir con médico"}
+            <Button variant="secondary" size="sm" onClick={() => setShareOpen(true)}>
+              <UserRound className="mr-2 h-4 w-4" /> Compartir con médico
             </Button>
-            <Button variant="outline" size="sm" onClick={handleShare}>
-              <Share className="mr-2 h-4 w-4" />
-              Compartir público (PDF/JPG)
+            <Button variant="outline" size="sm" onClick={() => exportCanvas("png")}>
+              <Download className="mr-2 h-4 w-4" /> Exportar PNG
             </Button>
-            <Button variant="default" size="sm" onClick={() => handleDownload("pdf")}>
-              <Download className="mr-2 h-4 w-4" />
-              Descargar PDF
+            <Button variant="default" size="sm" onClick={() => exportCanvas("pdf")}>
+              <Download className="mr-2 h-4 w-4" /> Exportar PDF
             </Button>
           </div>
         </div>
       </header>
+
       <div className="container max-w-6xl mx-auto p-4 space-y-6">
-        <SharedHistorySection history={mockSharedHistory} />
         <Card>
           <CardContent className="p-6 grid gap-6 md:grid-cols-2">
             <div>
               <h2 className="text-xl font-semibold mb-4">{study.description}</h2>
               <div className="space-y-2">
-                <p><span className="font-medium">Paciente:</span> {study.patientName}</p>
-                <p><span className="font-medium">ID:</span> {study.patientId}</p>
-                <p><span className="font-medium">Fecha:</span> {new Date(study.studyDate).toLocaleDateString("es-ES")}</p>
-                <p><span className="font-medium">Modalidad:</span> {study.modality}</p>
+                <p>
+                  <span className="font-medium">Paciente:</span> {study.patientName}
+                </p>
+                <p>
+                  <span className="font-medium">ID:</span> {study.patientId}
+                </p>
+                <p>
+                  <span className="font-medium">Fecha:</span>{" "}
+                  {new Date(study.studyDate).toLocaleDateString("es-ES")}
+                </p>
+                <p>
+                  <span className="font-medium">Modalidad:</span> {study.modality}
+                </p>
               </div>
             </div>
-            <DoctorComments comments={study.doctorComments} onReply={handleReply} />
+            <DoctorComments
+              comments={study.doctorComments}
+              onReply={handleReply}
+            />
           </CardContent>
         </Card>
+
         <StudyViewer
           study={study}
           activeFormat={activeFormat}
           setActiveFormat={(v) => setActiveFormat(v as "jpg" | "pdf")}
-          onDownload={handleDownload}
+          onDownload={() => {}}
         />
+
+        <SharedHistorySection history={mockSharedHistory} />
       </div>
+
+      {/* Modal para compartir con médico */}
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Compartir estudio con médico</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Ingresa el correo o número telefónico del médico.
+            </p>
+            <Input
+              placeholder="ej: doctor@email.com o +541112345678"
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
+            />
+          </div>
+          <DialogFooter className="mt-4">
+            <Button
+              onClick={() => {
+                setShareOpen(false);
+                toast({
+                  title: "Estudio compartido",
+                  description: `Se ha compartido con: ${contact}`,
+                });
+                setContact("");
+              }}
+            >
+              Compartir ahora
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

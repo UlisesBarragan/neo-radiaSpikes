@@ -1,11 +1,11 @@
-import React, { useEffect, useRef } from "react";
+// StudyViewer.tsx
+import React, { useEffect, useRef, useState } from "react";
 import cornerstone from "cornerstone-core";
 import cornerstoneWADOImageLoader from "cornerstone-wado-image-loader";
 import dicomParser from "dicom-parser";
-import { jsPDF } from "jspdf";
-import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
 import type { Study } from "@/types/study";
+import { Button } from "@/components/ui/button";
+import { ZoomIn, ZoomOut } from "lucide-react";
 
 cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
 cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
@@ -20,11 +20,10 @@ interface Props {
 
 export default function StudyViewer({
   study,
-  activeFormat,
-  setActiveFormat,
-  onDownload,
 }: Props) {
   const cornerstoneElementRef = useRef<HTMLDivElement>(null);
+  const [aspectRatio, setAspectRatio] = useState("1 / 1");
+  const [zoomLevel, setZoomLevel] = useState(1);
 
   useEffect(() => {
     if (!study.images || study.images.length === 0) return;
@@ -40,6 +39,13 @@ export default function StudyViewer({
       .then((image) => {
         const viewport = cornerstone.getDefaultViewportForImage(element, image);
         cornerstone.displayImage(element, image, viewport);
+        const ratio = `${image.columns} / ${image.rows}`;
+        setAspectRatio(ratio);
+
+        cornerstone.mouseInput.enable(element);
+        cornerstone.mouseWheelInput.enable(element);
+        cornerstone.pan.activate(element, 2); // Right click
+        cornerstone.zoom.activate(element, 4); // Mouse wheel
       })
       .catch(console.error);
 
@@ -48,60 +54,36 @@ export default function StudyViewer({
     };
   }, [study.images]);
 
-  const exportAsPNG = () => {
-    const canvas = cornerstoneElementRef.current?.querySelector("canvas") as HTMLCanvasElement;
-    if (!canvas) return;
-
-    const imgData = canvas.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.download = "estudio.png";
-    link.href = imgData;
-    link.click();
-  };
-
-  const exportAsPDF = () => {
-    const canvas = cornerstoneElementRef.current?.querySelector("canvas") as HTMLCanvasElement;
-    if (!canvas) return;
-
-    const imgData = canvas.toDataURL("image/jpeg", 1.0);
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "px",
-      format: [canvas.width, canvas.height],
-    });
-
-    pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height);
-    pdf.save("estudio.pdf");
+  const handleZoom = (factor: number) => {
+    const element = cornerstoneElementRef.current;
+    if (!element) return;
+    const viewport = cornerstone.getViewport(element);
+    viewport.scale *= factor;
+    setZoomLevel(viewport.scale);
+    cornerstone.setViewport(element, viewport);
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold">Visualización del Estudio</h3>
+    <div className="bg-white rounded-lg shadow-md overflow-hidden transition-all duration-300">
+      <div className="flex justify-between items-center p-3 border-b">
+        <h3 className="text-base font-semibold">Vista previa del estudio</h3>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportAsPNG}
-          >
-            <Download className="mr-1 h-4 w-4" />
-            Exportar como PNG
+          <Button variant="outline" size="icon" onClick={() => handleZoom(1.1)}>
+            <ZoomIn className="h-4 w-4" />
           </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={exportAsPDF}
-          >
-            <Download className="mr-1 h-4 w-4" />
-            Exportar como PDF
+          <Button variant="outline" size="icon" onClick={() => handleZoom(0.9)}>
+            <ZoomOut className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
-      <div
-        ref={cornerstoneElementRef}
-        className="w-full max-w-[800px] mx-auto h-[800px] bg-black rounded shadow-md"
-      />
+      <div className="bg-neutral-950 flex justify-center items-center p-4">
+        <div
+          ref={cornerstoneElementRef}
+          className="bg-black rounded-lg shadow-lg border border-gray-700 w-full max-w-[600px] cursor-grab"
+          style={{ aspectRatio }}
+        />
+      </div>
     </div>
   );
 }

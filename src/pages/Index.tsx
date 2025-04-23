@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import Header from "@/components/Header";
 import DicomViewer from "@/components/DicomViewer";
 import { toast } from "@/hooks/use-toast";
 
@@ -65,13 +64,6 @@ export default function Index() {
 
   return (
     <main className="flex flex-col h-screen bg-background">
-      {/* Header */}
-      <Header
-        currentStudy={currentStudy}
-        onShare={handleShareStudy}
-        onExport={handleExportImage}
-      />
-
       <div className="flex-1 overflow-hidden flex">
         <div className="flex-1 overflow-hidden">
           {currentStudy ? (
