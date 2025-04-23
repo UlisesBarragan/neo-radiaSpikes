@@ -20,7 +20,22 @@ import DoctorComments from "@/components/DoctorComments";
 import StudyViewer from "@/components/StudyViewer";
 import type { Study, SharedHistory } from "@/types/study";
 import { Card, CardContent } from "@/components/ui/card";
+<<<<<<< HEAD
 import { jsPDF } from "jspdf";
+=======
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
+import { uploadToS3 } from "@/lib/S3Uploader";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+>>>>>>> 8da7911 (intento de subida al bucket)
 
 const mockSharedHistory: SharedHistory[] = [
   {
@@ -34,13 +49,22 @@ const mockSharedHistory: SharedHistory[] = [
   },
 ];
 
+
+
 export default function UserView() {
   const { userId } = useParams();
   const [study, setStudy] = useState<Study | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeFormat, setActiveFormat] = useState<"jpg" | "pdf">("jpg");
+<<<<<<< HEAD
   const [shareOpen, setShareOpen] = useState(false);
   const [contact, setContact] = useState("");
+=======
+  const [sharedWithDoctor, setSharedWithDoctor] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [shareFormat, setShareFormat] = useState<"pdf" | "jpg">("pdf");
+>>>>>>> 8da7911 (intento de subida al bucket)
 
   useEffect(() => {
     setIsLoading(true);
@@ -72,7 +96,11 @@ export default function UserView() {
           ],
         },
         images: [
+<<<<<<< HEAD
           "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_1.dcm",
+=======
+          "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_1.dcm"
+>>>>>>> 8da7911 (intento de subida al bucket)
         ],
       };
       setStudy(mockStudy);
@@ -80,6 +108,7 @@ export default function UserView() {
     }, 1000);
   }, [userId]);
 
+<<<<<<< HEAD
   const exportCanvas = (format: "png" | "pdf") => {
     const canvas = document.querySelector("canvas") as HTMLCanvasElement;
     if (!canvas) return;
@@ -88,6 +117,15 @@ export default function UserView() {
       format === "png" ? "image/png" : "image/jpeg",
       1.0
     );
+=======
+  const handleShareWithDoctor = () => {
+    setSharedWithDoctor(true);
+    toast({
+      title: "Estudio compartido con el médico",
+      description: "El médico ahora tiene acceso a tu estudio completo.",
+    });
+  };
+>>>>>>> 8da7911 (intento de subida al bucket)
 
     if (format === "png") {
       const link = document.createElement("a");
@@ -153,11 +191,21 @@ export default function UserView() {
             <Button variant="secondary" size="sm" onClick={() => setShareOpen(true)}>
               <UserRound className="mr-2 h-4 w-4" /> Compartir con médico
             </Button>
+<<<<<<< HEAD
             <Button variant="outline" size="sm" onClick={() => exportCanvas("png")}>
               <Download className="mr-2 h-4 w-4" /> Exportar PNG
             </Button>
             <Button variant="default" size="sm" onClick={() => exportCanvas("pdf")}>
               <Download className="mr-2 h-4 w-4" /> Exportar PDF
+=======
+            <Button variant="outline" size="sm" onClick={() => setShowShareDialog(true)}>
+              <Share className="mr-2 h-4 w-4" />
+              Compartir público (PDF/JPG)
+            </Button>
+            <Button variant="default" size="sm" onClick={() => handleDownload("pdf")}> 
+              <Download className="mr-2 h-4 w-4" />
+              Descargar PDF
+>>>>>>> 8da7911 (intento de subida al bucket)
             </Button>
           </div>
         </div>
@@ -201,6 +249,7 @@ export default function UserView() {
         <SharedHistorySection history={mockSharedHistory} />
       </div>
 
+<<<<<<< HEAD
       {/* Modal para compartir con médico */}
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
         <DialogContent>
@@ -230,6 +279,88 @@ export default function UserView() {
             >
               Compartir ahora
             </Button>
+=======
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Compartir por WhatsApp</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <Input
+              type="tel"
+              placeholder="Número a 10 dígitos (sin +52)"
+              value={whatsappNumber}
+              onChange={(e) => setWhatsappNumber(e.target.value)}
+            />
+
+            <div className="flex gap-2">
+              <Button
+                variant={shareFormat === "jpg" ? "default" : "outline"}
+                onClick={() => setShareFormat("jpg")}
+              >
+                JPG
+              </Button>
+              <Button
+                variant={shareFormat === "pdf" ? "default" : "outline"}
+                onClick={() => setShareFormat("pdf")}
+              >
+                PDF
+              </Button>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-4">
+          <Button
+  onClick={async () => {
+    if (!whatsappNumber || whatsappNumber.length !== 10) {
+      toast({
+        title: "Número inválido",
+        description: "Ingresa un número válido de 10 dígitos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        shareFormat === "pdf" ? study?.files.pdf || "" : study?.files.jpg?.[0] || ""
+      );
+      const blob = await response.blob();
+
+      const file = new File(
+        [blob],
+        `estudio-${study?.patientId}.${shareFormat}`,
+        { type: blob.type }
+      );
+
+      // Sube a S3
+      const uploadedUrl = await uploadToS3(file, file.name);
+
+      // Prepara mensaje para WhatsApp
+      const message = `Hola 👋, te comparto el estudio médico (${shareFormat.toUpperCase()}): ${uploadedUrl}`;
+      const whatsappURL = `https://api.whatsapp.com/send?phone=52${whatsappNumber}&text=${encodeURIComponent(message)}`;
+      window.open(whatsappURL, "_blank");
+
+      toast({
+        title: "Archivo compartido",
+        description: `Se ha subido y enviado el estudio vía WhatsApp.`,
+      });
+
+      setShowShareDialog(false);
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error al subir o enviar",
+        description: "No se pudo compartir el archivo.",
+        variant: "destructive",
+      });
+    }
+  }}
+>
+  Enviar por WhatsApp
+</Button>
+>>>>>>> 8da7911 (intento de subida al bucket)
           </DialogFooter>
         </DialogContent>
       </Dialog>
