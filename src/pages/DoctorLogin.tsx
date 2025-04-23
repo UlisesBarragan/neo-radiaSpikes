@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -12,17 +11,19 @@ export default function DoctorLogin() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!doctorId.trim()) {
+
+    const trimmedId = doctorId.trim();
+
+    if (trimmedId.length !== 5) {
       toast({
         title: "Error",
-        description: "Por favor ingrese un ID válido",
+        description: "La cédula debe tener exactamente 5 caracteres.",
         variant: "destructive",
       });
       return;
     }
-    
-    // En una aplicación real, validaríamos el ID contra una base de datos
-    // Por ahora, solo simulamos el acceso
+
+    // Aquí podrías hacer una petición para validar la cédula si es necesario
     navigate(`/admin`);
   };
 
@@ -43,7 +44,7 @@ export default function DoctorLogin() {
                 type="text"
                 value={doctorId}
                 onChange={(e) => setDoctorId(e.target.value)}
-                placeholder="Ejemplo: M12345"
+                placeholder="Ejemplo: M1234"
               />
             </div>
             <Button type="submit" className="w-full">
