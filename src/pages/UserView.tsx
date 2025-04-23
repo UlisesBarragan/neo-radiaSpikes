@@ -4,8 +4,9 @@ import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Share, Download, FileText } from "lucide-react";
+import { Share, Download, FileText, MessageSquare, MessageSquareReply, History } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Study {
   id: string;
@@ -14,18 +15,40 @@ interface Study {
   studyDate: string;
   modality: string;
   description: string;
-  doctorComments: string[];
+  doctorComments: {
+    text: string;
+    replies: { text: string; date: string; }[];
+    date: string;
+  }[];
   files: {
     pdf: string;
     jpg: string[];
   };
+  sharedWith?: string[];
 }
+
+const mockSharedHistory = [
+  {
+    id: "1",
+    sharedWith: ["m.diazm@hospital.com", "m.perez@mediclinic.com"],
+    date: "2024-04-14",
+    description: "Tomografía de tórax compartida",
+  },
+  {
+    id: "2",
+    sharedWith: ["dr.castro@hospital.com"],
+    date: "2023-10-10",
+    description: "Estudio MRI compartido",
+  }
+];
 
 export default function UserView() {
   const { userId } = useParams();
   const [study, setStudy] = useState<Study | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeFormat, setActiveFormat] = useState("jpg");
+  const [replyText, setReplyText] = useState<string>("");
+  const [commentReplyIndex, setCommentReplyIndex] = useState<number | null>(null);
 
   useEffect(() => {
     // Simulación de carga de datos del estudio
@@ -40,16 +63,29 @@ export default function UserView() {
         modality: "CT",
         description: "Tomografía de tórax",
         doctorComments: [
-          "El paciente muestra mejoría respecto al estudio anterior.",
-          "No hay hallazgos significativos que requieran atención inmediata.",
-          "Recomiendo seguimiento en 6 meses."
+          {
+            text: "El paciente muestra mejoría respecto al estudio anterior.",
+            replies: [
+              { text: "Gracias doctor. Tomaré en cuenta la recomendación.", date: "2024-03-21" }
+            ],
+            date: "2024-03-20"
+          },
+          {
+            text: "No hay hallazgos significativos que requieran atención inmediata.",
+            replies: [],
+            date: "2024-03-20"
+          },
+          {
+            text: "Recomiendo seguimiento en 6 meses.",
+            replies: [],
+            date: "2024-03-20"
+          }
         ],
         files: {
           pdf: "/sample-report.pdf",
           jpg: ["/sample-image-1.jpg", "/sample-image-2.jpg"]
         }
       };
-      
       setStudy(mockStudy);
       setIsLoading(false);
     }, 1000);
@@ -80,9 +116,34 @@ export default function UserView() {
       title: `Descargando en formato ${format.toUpperCase()}`,
       description: "El archivo se descargará en breve",
     });
-    
     // En una aplicación real, aquí iría la lógica para descargar el archivo
-    // Por ahora solo mostramos el toast
+  };
+
+  // Permite al paciente responder a un comentario de médico
+  const handleReply = (index: number) => {
+    if (!replyText.trim()) {
+      toast({
+        title: "Mensaje vacío",
+        description: "No puedes enviar una respuesta vacía.",
+        variant: "destructive"
+      });
+      return;
+    }
+    setStudy((prev) => {
+      if (!prev) return prev;
+      const updatedComments = [...prev.doctorComments];
+      updatedComments[index].replies.push({
+        text: replyText,
+        date: new Date().toISOString().split("T")[0]
+      });
+      return { ...prev, doctorComments: updatedComments };
+    });
+    setReplyText("");
+    setCommentReplyIndex(null);
+    toast({
+      title: "Respuesta enviada",
+      description: "Tu respuesta ha sido enviada al médico",
+    });
   };
 
   if (isLoading) {
@@ -120,6 +181,41 @@ export default function UserView() {
       </header>
 
       <div className="container max-w-6xl mx-auto p-4 space-y-6">
+
+        {/* Historial de archivos compartidos */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center mb-3 gap-2">
+              <History className="h-5 w-5 text-muted-foreground" />
+              <h3 className="text-md font-semibold">Historial de archivos compartidos</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-muted-foreground">
+                    <th className="px-2 py-1 text-left">Fecha</th>
+                    <th className="px-2 py-1 text-left">Descripción</th>
+                    <th className="px-2 py-1 text-left">Compartido con</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mockSharedHistory.map((h) => (
+                    <tr key={h.id} className="border-b last:border-0">
+                      <td className="px-2 py-1">{new Date(h.date).toLocaleDateString("es-ES")}</td>
+                      <td className="px-2 py-1">{h.description}</td>
+                      <td className="px-2 py-1">
+                        {h.sharedWith.map((email, i) => (
+                          <span key={i} className="inline-block bg-muted/80 rounded px-2 py-0.5 mr-1">{email}</span>
+                        ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardContent className="p-6">
             <div className="grid gap-2 md:grid-cols-2">
@@ -133,12 +229,69 @@ export default function UserView() {
                 </div>
               </div>
               <div>
-                <h3 className="text-md font-semibold mb-2">Comentarios del médico:</h3>
-                <ul className="space-y-2 bg-muted p-3 rounded-md">
+                <h3 className="text-md font-semibold mb-2 flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Comentarios del médico y respuestas
+                </h3>
+                <ul className="space-y-4 bg-muted p-3 rounded-md">
                   {study.doctorComments.map((comment, index) => (
-                    <li key={index} className="flex gap-2">
-                      <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
-                      <span>{comment}</span>
+                    <li key={index}>
+                      <div className="flex items-start gap-2">
+                        <FileText className="h-5 w-5 text-muted-foreground shrink-0 mt-1" />
+                        <div className="flex-1">
+                          <div className="text-sm mb-2">
+                            <span>{comment.text}</span>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              ({new Date(comment.date).toLocaleDateString("es-ES")})
+                            </span>
+                          </div>
+                          <div className="ml-2">
+                            {/* Mostrar respuestas del paciente */}
+                            {comment.replies.map((reply, rIdx) => (
+                              <div key={rIdx} className="flex gap-2 mb-1 items-center">
+                                <MessageSquareReply className="h-4 w-4 text-primary" />
+                                <span className="text-xs">{reply.text}</span>
+                                <span className="ml-1 text-xs text-muted-foreground">
+                                  ({new Date(reply.date).toLocaleDateString("es-ES")})
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Formulario de respuesta */}
+                          {commentReplyIndex === index ? (
+                            <div className="mt-2 space-y-2">
+                              <Textarea
+                                name={`reply-${index}`}
+                                placeholder="Escribe tu respuesta..."
+                                value={replyText}
+                                onChange={(e) => setReplyText(e.target.value)}
+                                rows={2}
+                              />
+                              <div className="flex gap-2">
+                                <Button variant="default" size="sm" onClick={() => handleReply(index)}>
+                                  Responder
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => setCommentReplyIndex(null)}>
+                                  Cancelar
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-2"
+                              onClick={() => {
+                                setCommentReplyIndex(index);
+                                setReplyText("");
+                              }}
+                            >
+                              <MessageSquareReply className="mr-1 h-4 w-4" />
+                              Responder
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     </li>
                   ))}
                 </ul>
