@@ -1,5 +1,3 @@
-"use client"
-
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
@@ -7,7 +5,7 @@ import cornerstone from "cornerstone-core"
 import cornerstoneWADOImageLoader from "cornerstone-wado-image-loader"
 import dicomParser from "dicom-parser"
 import jsPDF from "jspdf"
-import { ZoomIn, ZoomOut, RotateCw, Move, Pencil, Type, Maximize, Minimize, Save } from "lucide-react"
+import { ZoomIn, ZoomOut, RotateCw, Move, Pencil, Type, Ruler, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Slider } from "@/components/ui/slider"
@@ -25,10 +23,23 @@ interface Study {
   description: string
   studyDate: string
   images: string[]
+  pixelSpacing?: number // Para convertir píxeles a mm
 }
 
 interface DicomViewerProps {
   study: Study
+}
+
+interface Point {
+  x: number
+  y: number
+}
+
+interface Measurement {
+  start: Point
+  end: Point
+  distance: number
+  distanceMm: number
 }
 
 export default function DicomViewer({ study }: DicomViewerProps) {
@@ -39,20 +50,30 @@ export default function DicomViewer({ study }: DicomViewerProps) {
   const [lastPosition, setLastPosition] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
   const [rotation, setRotation] = useState(0)
-  const [windowLevel, setWindowLevel] = useState(50)
-  const [windowWidth, setWindowWidth] = useState(50)
+  const [brightness, setBrightness] = useState(0)
+  const [contrast, setContrast] = useState(0)
   const [doctorComment, setDoctorComment] = useState("")
   const [comments, setComments] = useState<{ text: string; date: string }[]>([])
   const [activeTool, setActiveTool] = useState("move")
-  const [isFullscreen, setIsFullscreen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const [measurements, setMeasurements] = useState<Measurement[]>([])
+  const [currentMeasurement, setCurrentMeasurement] = useState<{start: Point | null, end: Point | null}>({
+    start: null,
+    end: null
+  })
+  const [pixelSpacing, setPixelSpacing] = useState(0.2) // Valor predeterminado: 0.2 mm por píxel
 
-  // Inicializar Cornerstone
+  // Inicializar Cornerstone y configurar la herramienta de mover
   useEffect(() => {
     if (!study || !cornerstoneElementRef.current) return
 
     const element = cornerstoneElementRef.current
     cornerstone.enable(element)
+
+    // Si tenemos espaciado de píxeles en el estudio, usarlo
+    if (study.pixelSpacing) {
+      setPixelSpacing(study.pixelSpacing)
+    }
 
     const imageId = `wadouri:${study.images[currentImageIndex]}`
     cornerstone
@@ -62,20 +83,67 @@ export default function DicomViewer({ study }: DicomViewerProps) {
         viewport.scale = zoom
         viewport.rotation = rotation
         viewport.voi = {
-          windowWidth: windowWidth * 2,
-          windowCenter: windowLevel * 2 - 100,
+          windowWidth: 100 + contrast * 2, // Ajuste para el nuevo rango
+          windowCenter: brightness,
         }
 
         cornerstone.displayImage(element, image, viewport)
+        
+        // Obtener el espaciado de píxeles de los metadatos DICOM si está disponible
+        const imageMetadata = cornerstone.metaData.get('imagePlaneModule', imageId)
+        if (imageMetadata && imageMetadata.rowPixelSpacing) {
+          setPixelSpacing(imageMetadata.rowPixelSpacing)
+        }
       })
       .catch(console.error)
 
+    // Configurar el evento de arrastre para la herramienta de mover
+    const handleMouseDown = (e: MouseEvent) => {
+      if (activeTool !== 'move') return
+      
+      e.preventDefault()
+      e.stopPropagation()
+      
+      let lastX = e.clientX
+      let lastY = e.clientY
+      let isDragging = true
+      
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        if (!isDragging) return
+        
+        const deltaX = moveEvent.clientX - lastX
+        const deltaY = moveEvent.clientY - lastY
+        lastX = moveEvent.clientX
+        lastY = moveEvent.clientY
+        
+        const viewport = cornerstone.getViewport(element)
+        viewport.translation.x += (deltaX / viewport.scale)
+        viewport.translation.y += (deltaY / viewport.scale)
+        cornerstone.setViewport(element, viewport)
+      }
+      
+      const handleMouseUp = () => {
+        isDragging = false
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+      
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    }
+    
+    // Agregar evento solo si la herramienta activa es "move"
+    if (activeTool === 'move') {
+      element.addEventListener('mousedown', handleMouseDown)
+    }
+
     return () => {
       cornerstone.disable(element)
+      element.removeEventListener('mousedown', handleMouseDown)
     }
-  }, [study, currentImageIndex, zoom, rotation, windowLevel, windowWidth])
+  }, [study, currentImageIndex, zoom, rotation, brightness, contrast, activeTool])
 
-  // Ajustar el tamaño del canvas de anotaciones al tamaño del canvas de Cornerstone
+  // Ajustar el tamaño del canvas de anotaciones
   useEffect(() => {
     const resizeCanvas = () => {
       const baseCanvas = cornerstoneElementRef.current?.querySelector("canvas")
@@ -84,13 +152,11 @@ export default function DicomViewer({ study }: DicomViewerProps) {
       if (baseCanvas && annotationCanvas) {
         annotationCanvas.width = baseCanvas.width
         annotationCanvas.height = baseCanvas.height
+        drawAnnotations()
       }
     }
 
-    // Ejecutar una vez al inicio
     setTimeout(resizeCanvas, 500)
-
-    // Configurar un observador de mutaciones para detectar cambios en el canvas
     const observer = new MutationObserver(resizeCanvas)
     const element = cornerstoneElementRef.current
 
@@ -98,60 +164,149 @@ export default function DicomViewer({ study }: DicomViewerProps) {
       observer.observe(element, { childList: true, subtree: true })
     }
 
-    // Manejar cambios de tamaño de ventana
-    const handleResize = () => {
-      setTimeout(resizeCanvas, 100)
-    }
-    window.addEventListener("resize", handleResize)
-
+    window.addEventListener("resize", resizeCanvas)
     return () => {
       observer.disconnect()
-      window.removeEventListener("resize", handleResize)
+      window.removeEventListener("resize", resizeCanvas)
     }
-  }, [cornerstoneElementRef.current, isFullscreen])
+  }, [cornerstoneElementRef.current])
+
+  // Dibujar anotaciones y mediciones
+  const drawAnnotations = () => {
+    const canvas = annotationCanvasRef.current
+    const ctx = canvas?.getContext("2d")
+    if (!ctx || !canvas) return
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    // Dibujar mediciones existentes
+    measurements.forEach((measure) => {
+      ctx.beginPath()
+      ctx.moveTo(measure.start.x, measure.start.y)
+      ctx.lineTo(measure.end.x, measure.end.y)
+      ctx.strokeStyle = "#00FF00"
+      ctx.lineWidth = 2
+      ctx.stroke()
+
+      // Dibujar texto con la distancia en mm
+      const midX = (measure.start.x + measure.end.x) / 2
+      const midY = (measure.start.y + measure.end.y) / 2
+      ctx.fillStyle = "#00FF00"
+      ctx.font = "14px Arial"
+      ctx.fillText(`${measure.distanceMm.toFixed(2)} mm`, midX + 5, midY - 5)
+    })
+
+    // Dibujar medición en curso
+    if (currentMeasurement.start && currentMeasurement.end) {
+      ctx.beginPath()
+      ctx.moveTo(currentMeasurement.start.x, currentMeasurement.start.y)
+      ctx.lineTo(currentMeasurement.end.x, currentMeasurement.end.y)
+      ctx.strokeStyle = "#00FF00"
+      ctx.lineWidth = 2
+      ctx.setLineDash([5, 5])
+      ctx.stroke()
+      ctx.setLineDash([])
+      
+      // Calcular y mostrar la distancia en tiempo real
+      const distancePx = Math.sqrt(
+        Math.pow(currentMeasurement.end.x - currentMeasurement.start.x, 2) + 
+        Math.pow(currentMeasurement.end.y - currentMeasurement.start.y, 2)
+      )
+      const distanceMm = distancePx * pixelSpacing
+      
+      const midX = (currentMeasurement.start.x + currentMeasurement.end.x) / 2
+      const midY = (currentMeasurement.start.y + currentMeasurement.end.y) / 2
+      ctx.fillStyle = "#00FF00"
+      ctx.font = "14px Arial"
+      ctx.fillText(`${distanceMm.toFixed(2)} mm`, midX + 5, midY - 5)
+    }
+  }
 
   // Funciones de dibujo
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (activeTool !== "draw" && activeTool !== "text") return
-
+    // Si estamos en modo "move", no hacer nada aquí
+    if (activeTool === "move") return
+    
     const canvas = annotationCanvasRef.current
     if (!canvas) return
+
     const rect = canvas.getBoundingClientRect()
     const x = (e.clientX - rect.left) * (canvas.width / rect.width)
     const y = (e.clientY - rect.top) * (canvas.height / rect.height)
-    setIsDrawing(true)
-    setLastPosition({ x, y })
 
-    if (activeTool === "text") {
-      const ctx = canvas.getContext("2d")
-      if (ctx) {
-        const text = prompt("Ingrese el texto para la anotación:", "")
-        if (text) {
-          ctx.font = "16px Arial"
-          ctx.fillStyle = "#FF0000"
-          ctx.fillText(text, x, y)
-        }
+    if (activeTool === "measure") {
+      if (!currentMeasurement.start) {
+        setCurrentMeasurement({ start: { x, y }, end: { x, y } })
+      } else {
+        const distancePx = Math.sqrt(
+          Math.pow(x - currentMeasurement.start.x, 2) + Math.pow(y - currentMeasurement.start.y, 2)
+        )
+        const distanceMm = distancePx * pixelSpacing
+        
+        setMeasurements([
+          ...measurements,
+          {
+            start: currentMeasurement.start,
+            end: { x, y },
+            distance: distancePx,
+            distanceMm: distanceMm
+          },
+        ])
+        setCurrentMeasurement({ start: null, end: null })
       }
-      setIsDrawing(false)
+      return
+    }
+
+    if (activeTool === "draw" || activeTool === "text") {
+      setIsDrawing(true)
+      setLastPosition({ x, y })
+
+      if (activeTool === "text") {
+        const ctx = canvas.getContext("2d")
+        if (ctx) {
+          const text = prompt("Ingrese el texto para la anotación:", "")
+          if (text) {
+            ctx.font = "16px Arial"
+            ctx.fillStyle = "#FF0000"
+            ctx.fillText(text, x, y)
+          }
+        }
+        setIsDrawing(false)
+      }
     }
   }
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || activeTool !== "draw") return
+    // Si estamos en modo "move", no hacer nada aquí
+    if (activeTool === "move") return
+    
+    if (!isDrawing && activeTool !== "measure") return
 
     const canvas = annotationCanvasRef.current
-    const ctx = canvas?.getContext("2d")
-    if (!ctx) return
+    if (!canvas) return
+
     const rect = canvas.getBoundingClientRect()
     const x = (e.clientX - rect.left) * (canvas.width / rect.width)
     const y = (e.clientY - rect.top) * (canvas.height / rect.height)
-    ctx.beginPath()
-    ctx.strokeStyle = "#FF0000"
-    ctx.lineWidth = 2
-    ctx.moveTo(lastPosition.x, lastPosition.y)
-    ctx.lineTo(x, y)
-    ctx.stroke()
-    setLastPosition({ x, y })
+
+    if (activeTool === "measure" && currentMeasurement.start) {
+      setCurrentMeasurement((prev) => ({ ...prev, end: { x, y } }))
+      drawAnnotations()
+      return
+    }
+
+    if (activeTool === "draw" && isDrawing) {
+      const ctx = canvas.getContext("2d")
+      if (ctx) {
+        ctx.beginPath()
+        ctx.strokeStyle = "#FF0000"
+        ctx.lineWidth = 2
+        ctx.moveTo(lastPosition.x, lastPosition.y)
+        ctx.lineTo(x, y)
+        ctx.stroke()
+        setLastPosition({ x, y })
+      }
+    }
   }
 
   const stopDrawing = () => setIsDrawing(false)
@@ -162,11 +317,22 @@ export default function DicomViewer({ study }: DicomViewerProps) {
   const handleRotateClockwise = () => setRotation((prev) => prev + 90)
   const handleRotateCounterClockwise = () => setRotation((prev) => prev - 90)
 
+  // Restablecer todos los valores y limpiar anotaciones
   const handleResetView = () => {
     setZoom(1)
     setRotation(0)
-    setWindowLevel(50)
-    setWindowWidth(50)
+    setBrightness(0)
+    setContrast(0)
+    handleClearAnnotations()
+    handleClearMeasurements()
+    
+    // Restablecer la posición de la imagen (pan)
+    if (cornerstoneElementRef.current) {
+      const element = cornerstoneElementRef.current
+      const viewport = cornerstone.getViewport(element)
+      viewport.translation = { x: 0, y: 0 }
+      cornerstone.setViewport(element, viewport)
+    }
   }
 
   const handleClearAnnotations = () => {
@@ -177,33 +343,11 @@ export default function DicomViewer({ study }: DicomViewerProps) {
     }
   }
 
-  // Función para alternar pantalla completa
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return
-
-    if (!isFullscreen) {
-      if (containerRef.current.requestFullscreen) {
-        containerRef.current.requestFullscreen()
-      }
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen()
-      }
-    }
-    setIsFullscreen(!isFullscreen)
+  const handleClearMeasurements = () => {
+    setMeasurements([])
+    setCurrentMeasurement({ start: null, end: null })
+    drawAnnotations()
   }
-
-  // Detectar cambios en el estado de pantalla completa
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement)
-    }
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange)
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange)
-    }
-  }, [])
 
   // Exportación de imágenes
   const exportCanvas = () => {
@@ -255,11 +399,20 @@ export default function DicomViewer({ study }: DicomViewerProps) {
     setActiveTool(tool)
   }
 
+  // Reset values when changing images
+  useEffect(() => {
+    // Only reset if not the first load
+    if (currentImageIndex !== 0) {
+      setZoom(1)
+      setBrightness(0)
+      setContrast(0)
+    }
+  }, [currentImageIndex])
+
   if (!study) return null
 
   return (
     <div className="flex flex-col w-full h-full bg-white" ref={containerRef}>
-      {/* Contenido principal con diseño de tres columnas */}
       {/* Header superior con botones de exportación */}
       <div className="px-6 py-4 bg-white border-b shadow-sm flex justify-between items-center">
         <div>
@@ -269,71 +422,27 @@ export default function DicomViewer({ study }: DicomViewerProps) {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleClearAnnotations}>🧹 Limpiar</Button>
-          <Button variant="outline" size="sm" onClick={() => exportAs("jpg")}>🖼 JPG</Button>
-          <Button variant="outline" size="sm" onClick={() => exportAs("png")}>📷 PNG</Button>
-          <Button variant="default" size="sm" onClick={() => exportAs("pdf")}>📄 PDF</Button>
+          <Button variant="outline" size="sm" onClick={handleClearAnnotations}>
+            Limpiar
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => exportAs("jpg")}>
+            JPG
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => exportAs("png")}>
+            PNG
+          </Button>
+          <Button variant="default" size="sm" onClick={() => exportAs("pdf")}>
+            PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleResetView}>
+            Restablecer
+          </Button>
         </div>
       </div>
-      <div className={`grid grid-cols-1 md:grid-cols-12 gap-4 p-4 h-full ${isFullscreen ? "fullscreen-mode" : ""}`}>
-        {/* Columna izquierda - Miniaturas (una sola columna) */}
-        <div className="md:col-span-2 bg-white border rounded-lg p-4 flex flex-col h-full">
-          <h3 className="text-sm font-medium mb-4">Imágenes del estudio</h3>
-          <div className="space-y-2">
-            {/* Solo mostramos una miniatura como solicitaste */}
-            <div
-              className="relative cursor-pointer rounded-md overflow-hidden border-2 border-blue-500"
-              onClick={() => setCurrentImageIndex(0)}
-            >
-              <div className="absolute top-1 left-1 bg-white/80 rounded-full w-5 h-5 flex items-center justify-center text-xs font-medium">
-                1
-              </div>
-              <div className="aspect-square bg-gray-100 flex items-center justify-center">
-                <img
-                  src="/placeholder.svg?height=150&width=150"
-                  alt="Imagen 1"
-                  className="w-full h-auto object-contain"
-                />
-              </div>
-            </div>
-          </div>
 
-          <div className="mt-auto pt-4">
-            <div className="space-y-2">
-              <label className="flex justify-between text-sm">
-                <span>Nivel de ventana</span>
-                <span className="font-medium">{windowLevel}%</span>
-              </label>
-              <Slider value={[windowLevel]} min={0} max={100} step={1} onValueChange={(v) => setWindowLevel(v[0])} />
-            </div>
-            <div className="space-y-2 mt-2">
-              <label className="flex justify-between text-sm">
-                <span>Ancho de ventana</span>
-                <span className="font-medium">{windowWidth}%</span>
-              </label>
-              <Slider value={[windowWidth]} min={0} max={100} step={1} onValueChange={(v) => setWindowWidth(v[0])} />
-            </div>
-          </div>
-        </div>
-
-        {/* Columna central - Imagen principal */}
-        <div className="md:col-span-6 flex flex-col h-full">
-          <div className="relative rounded-lg border bg-black flex-1" style={{ minHeight: "400px" }}>
-            <div ref={cornerstoneElementRef} className="w-full h-full rounded-lg" />
-            <canvas
-              ref={annotationCanvasRef}
-              className="absolute top-0 left-0 z-10 w-full h-full"
-              style={{ cursor: activeTool === "draw" ? "crosshair" : activeTool === "text" ? "text" : "default" }}
-              onMouseDown={startDrawing}
-              onMouseMove={draw}
-              onMouseUp={stopDrawing}
-              onMouseLeave={stopDrawing}
-            />
-          </div>
-        </div>
-
-        {/* Columna derecha - Herramientas y comentarios */}
-        <div className="md:col-span-4 flex flex-col h-full">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 h-full">
+        {/* Columna izquierda - Herramientas */}
+        <div className="md:col-span-3 flex flex-col h-full">
           {/* Herramientas del médico */}
           <Card className="mb-4">
             <CardContent className="p-4">
@@ -367,13 +476,31 @@ export default function DicomViewer({ study }: DicomViewerProps) {
                   <span className="text-xs">Texto</span>
                 </Button>
                 <Button
+                  variant={activeTool === "measure" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleToolChange("measure")}
+                  className="flex flex-col items-center justify-center h-16 px-1"
+                >
+                  <Ruler className="h-4 w-4 mb-1" />
+                  <span className="text-xs">Medir</span>
+                </Button>
+                <Button
                   variant="outline"
                   size="sm"
                   onClick={handleClearAnnotations}
                   className="flex flex-col items-center justify-center h-16 px-1"
                 >
-                  <Save className="h-4 w-4 mb-1" />
+                  <Trash2 className="h-4 w-4 mb-1" />
                   <span className="text-xs">Limpiar</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearMeasurements}
+                  className="flex flex-col items-center justify-center h-16 px-1"
+                >
+                  <Trash2 className="h-4 w-4 mb-1" />
+                  <span className="text-xs">Limpiar medidas</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -402,43 +529,116 @@ export default function DicomViewer({ study }: DicomViewerProps) {
                   <RotateCw className="h-4 w-4 mb-1" />
                   <span className="text-xs">Rotar</span>
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={toggleFullscreen}
-                  className="flex flex-col items-center justify-center h-16 px-1"
-                >
-                  {isFullscreen ? (
-                    <>
-                      <Minimize className="h-4 w-4 mb-1" />
-                      <span className="text-xs">Salir</span>
-                    </>
-                  ) : (
-                    <>
-                      <Maximize className="h-4 w-4 mb-1" />
-                      <span className="text-xs">Ampliar</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-              <div className="flex justify-between">
-                <Button variant="outline" size="sm" onClick={() => exportAs("jpg")}>
-                  JPG
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => exportAs("png")}>
-                  PNG
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => exportAs("pdf")}>
-                  PDF
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleResetView}>
-                  Restablecer
-                </Button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Comentarios del médico */}
+          {/* Ajustes de brillo y contraste */}
+          <Card className="mb-4">
+            <CardContent className="p-4">
+              <h3 className="text-sm font-medium mb-3">Ajustes</h3>
+              <div className="space-y-2">
+                <label className="flex justify-between text-sm">
+                  <span>Brillo</span>
+                  <span className="font-medium">{brightness}</span>
+                </label>
+                <Slider value={[brightness]} min={-100} max={100} step={1} onValueChange={(v) => setBrightness(v[0])} />
+              </div>
+              <div className="space-y-2 mt-2">
+                <label className="flex justify-between text-sm">
+                  <span>Contraste</span>
+                  <span className="font-medium">{contrast}</span>
+                </label>
+                <Slider value={[contrast]} min={-100} max={100} step={1} onValueChange={(v) => setContrast(v[0])} />
+              </div>
+              <Button variant="outline" size="sm" onClick={handleResetView} className="w-full mt-3">
+                Restablecer valores
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Columna central - Imagen principal */}
+        <div className="md:col-span-6 flex flex-col h-full">
+          <div className="relative rounded-lg border bg-black flex-1" style={{ minHeight: "400px" }}>
+            <div ref={cornerstoneElementRef} className="w-full h-full rounded-lg" />
+            <canvas
+              ref={annotationCanvasRef}
+              className="absolute top-0 left-0 z-10 w-full h-full"
+              style={{
+                cursor:
+                  activeTool === "draw"
+                    ? "crosshair"
+                    : activeTool === "text"
+                      ? "text"
+                      : activeTool === "measure"
+                        ? "crosshair"
+                        : activeTool === "move"
+                          ? "move"
+                          : "default",
+              }}
+              onMouseDown={startDrawing}
+              onMouseMove={draw}
+              onMouseUp={stopDrawing}
+              onMouseLeave={stopDrawing}
+            />
+          </div>
+
+          {/* Slider para navegación entre imágenes */}
+          {study.images.length > 1 && (
+            <div className="mt-4 px-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">
+                  Imagen {currentImageIndex + 1} de {study.images.length}
+                </span>
+              </div>
+              <Slider
+                value={[currentImageIndex]}
+                min={0}
+                max={study.images.length - 1}
+                step={1}
+                onValueChange={(v) => setCurrentImageIndex(v[0])}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Columna derecha - Información del estudio y comentarios */}
+        <div className="md:col-span-3 flex flex-col h-full gap-4">
+          {/* Información del estudio */}
+          <Card className="bg-white border rounded-lg flex-shrink-0">
+            <CardContent className="p-4">
+              <h3 className="text-sm font-medium mb-4">Información del estudio</h3>
+              <div className="space-y-4">
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <h4 className="text-xs font-medium text-gray-500 mb-1">Paciente</h4>
+                  <p className="text-sm font-medium">{study.patientName}</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <h4 className="text-xs font-medium text-gray-500 mb-1">ID</h4>
+                  <p className="text-sm font-medium">{study.patientId}</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <h4 className="text-xs font-medium text-gray-500 mb-1">Modalidad</h4>
+                  <p className="text-sm font-medium">{study.modality}</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <h4 className="text-xs font-medium text-gray-500 mb-1">Descripción</h4>
+                  <p className="text-sm font-medium">{study.description}</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <h4 className="text-xs font-medium text-gray-500 mb-1">Fecha</h4>
+                  <p className="text-sm font-medium">{study.studyDate}</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <h4 className="text-xs font-medium text-gray-500 mb-1">Imágenes</h4>
+                  <p className="text-sm font-medium">{study.images.length} disponibles</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          {/* Comentarios del médico - Movido a la derecha */}
           <Card className="flex-1 flex flex-col">
             <CardContent className="p-4 flex flex-col h-full">
               <h3 className="text-lg font-medium mb-3">Comentarios del médico</h3>
@@ -471,36 +671,6 @@ export default function DicomViewer({ study }: DicomViewerProps) {
           </Card>
         </div>
       </div>
-
-      {/* Información del paciente - Visible solo en modo pantalla completa */}
-      {isFullscreen && (
-        <div className="absolute bottom-4 right-4 bg-white/90 p-3 rounded-lg shadow-lg z-20">
-          <h4 className="text-sm font-medium mb-2">Información del paciente</h4>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-            <span className="font-medium">Paciente:</span>
-            <span>{study.patientName}</span>
-            <span className="font-medium">ID:</span>
-            <span>{study.patientId}</span>
-            <span className="font-medium">Modalidad:</span>
-            <span>{study.modality}</span>
-            <span className="font-medium">Fecha:</span>
-            <span>{study.studyDate}</span>
-          </div>
-        </div>
-      )}
-
-      <style>{`
-        .fullscreen-mode {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          z-index: 9999;
-          background: white;
-          padding: 20px;
-        }
-      `}</style>
     </div>
   )
 }

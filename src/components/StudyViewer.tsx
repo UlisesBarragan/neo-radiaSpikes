@@ -1,4 +1,3 @@
-// StudyViewer.tsx
 import React, { useEffect, useRef, useState } from "react";
 import cornerstone from "cornerstone-core";
 import cornerstoneWADOImageLoader from "cornerstone-wado-image-loader";

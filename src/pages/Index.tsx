@@ -24,9 +24,13 @@ export default function Index() {
         patientId: "P12345",
         studyDate: "2024-04-02",
         modality: "CT",
-        description: "Tomografía desde S3",
+        description: "Imagenologia",
         images: [
-          "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_1.dcm"
+          "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_1.dcm",
+          "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_2.dcm",  // Nueva imagen
+          "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_3.dcm",
+          "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_4.dcm",
+          "https://neoradia.s3.us-east-2.amazonaws.com/IMG_20240402_1_5.dcm"
         ],
       },
     ];
