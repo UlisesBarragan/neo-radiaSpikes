@@ -302,6 +302,7 @@ export default function UserView() {
         onChange={(e) => setDoctorEmail(e.target.value)}
       />
       <div className="space-y-3">
+  
   <div className="flex gap-2">
     <Button
       variant={emailFormat === "png" ? "default" : "outline"}
@@ -330,39 +331,26 @@ export default function UserView() {
       });
       return;
     }
-  
-    const canvas = document.querySelector("canvas") as HTMLCanvasElement;
-    if (!canvas) {
-      toast({
-        title: "Error",
-        description: "No se encontró el canvas del estudio.",
-        variant: "destructive",
-      });
-      return;
-    }
-  
-    const dataURL = canvas.toDataURL(
-      emailFormat === "png" ? "image/png" : "image/jpeg"
-    );
-  
-    const attachmentLink = dataURL;
+
+    const fileUrl =
+      shareFormat === "pdf"
+        ? study?.files.pdf
+        : study?.files.jpg?.[0] || "";
+
     const mailSubject = `Estudio médico del paciente ${study?.patientName}`;
-    const mailBody = `Hola doctor,\n\nAdjunto encontrará el estudio médico del paciente ${
-      study?.patientName
-    } en formato ${emailFormat.toUpperCase()}.\n\nNota: Copia el siguiente enlace y pégalo en tu navegador para descargarlo:\n\n${attachmentLink}\n\nSaludos.`;
-  
+    const mailBody = `Hola doctor,\n\nAquí está el estudio médico del paciente ${study?.patientName} (${shareFormat.toUpperCase()}):\n\n${fileUrl}\n\nSaludos.`;
+
     const mailtoLink = `mailto:${doctorEmail}?subject=${encodeURIComponent(
       mailSubject
     )}&body=${encodeURIComponent(mailBody)}`;
-  
+
     window.open(mailtoLink, "_blank");
-  
+
     toast({
       title: "Correo preparado",
-      description:
-        "Se ha abierto tu app de correo con el estudio generado como enlace.",
+      description: "Se ha abierto tu app de correo con el estudio listo para enviar.",
     });
-  
+
     setShareEmailDialog(false);
     setDoctorEmail("");
   }}
