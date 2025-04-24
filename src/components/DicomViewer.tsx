@@ -1,5 +1,3 @@
-"use client"
-
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
@@ -101,9 +99,9 @@ export default function DicomViewer({ study }: DicomViewerProps) {
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [filters, setFilters] = useState({
-    red: 100,       // Canal rojo (0-200%)
+    red: 0,       // Canal rojo (0-200%)
     green: 100,     // Canal verde (0-200%)
-    blue: 100,      // Canal azul (0-200%)
+    blue: 0,      // Canal azul (0-200%)
   });
 
   // Estados de paneles plegables
@@ -190,80 +188,80 @@ export default function DicomViewer({ study }: DicomViewerProps) {
   // Cargar imagen DICOM con valores originales
   // 1. Primero, modifica el useEffect que controla el renderizado de la imagen DICOM
 
-useEffect(() => {
-  if (!study || !cornerstoneElementRef.current) return
+  useEffect(() => {
+    if (!study || !cornerstoneElementRef.current) return
 
-  const element = cornerstoneElementRef.current
-  cornerstone.enable(element)
+    const element = cornerstoneElementRef.current
+    cornerstone.enable(element)
 
-  const imageId = `wadouri:${study.images[currentImageIndex]}`
+    const imageId = `wadouri:${study.images[currentImageIndex]}`
 
-  cornerstone
-    .loadImage(imageId)
-    .then((image) => {
-      const viewport = cornerstone.getDefaultViewportForImage(element, image)
+    cornerstone
+      .loadImage(imageId)
+      .then((image) => {
+        const viewport = cornerstone.getDefaultViewportForImage(element, image)
 
-      // Usar el zoom predeterminado de la imagen solo la primera vez
-      if (zoom === null) {
-        setZoom(viewport.scale)
-      } else {
-        viewport.scale = zoom
-      }
+        // Usar el zoom predeterminado de la imagen solo la primera vez
+        if (zoom === null) {
+          setZoom(viewport.scale)
+        } else {
+          viewport.scale = zoom
+        }
 
-      // Guardar los valores originales de la imagen
-      if (!defaultVOI) {
-        setDefaultVOI({
-          windowWidth: viewport.voi.windowWidth,
-          windowCenter: viewport.voi.windowCenter,
-        })
-      }
+        // Guardar los valores originales de la imagen
+        if (!defaultVOI) {
+          setDefaultVOI({
+            windowWidth: viewport.voi.windowWidth,
+            windowCenter: viewport.voi.windowCenter,
+          })
+        }
 
-      // Aplicar transformaciones actuales
-      viewport.rotation = rotation
+        // Aplicar transformaciones actuales
+        viewport.rotation = rotation
 
-      // Aplicar ajustes de brillo/contraste si existen
-      if (brightness !== 0 || (contrast !== 0 && defaultVOI)) {
-        viewport.voi.windowWidth = defaultVOI.windowWidth * (1 + contrast / 100)
-        viewport.voi.windowCenter = defaultVOI.windowCenter + brightness
-      }
+        // Aplicar ajustes de brillo/contraste si existen
+        if (brightness !== 0 || (contrast !== 0 && defaultVOI)) {
+          viewport.voi.windowWidth = defaultVOI.windowWidth * (1 + contrast / 100)
+          viewport.voi.windowCenter = defaultVOI.windowCenter + brightness
+        }
 
-      // AÑADIR ESTO: Aplicar filtros de color mediante la API de Cornerstone
-      viewport.colormap = undefined; // Resetea cualquier mapa de color previo
-      
-      // Crear una función de renderizado personalizada para aplicar filtros CSS
-      const enabledElement = cornerstone.getEnabledElement(element);
-      if (enabledElement && enabledElement.canvas) {
-        // Aplicar filtros CSS al canvas
-        const filterString = `hue-rotate(${filters.red}deg) saturate(${filters.green}%) sepia(${filters.blue}%)`;
-        enabledElement.canvas.style.filter = filterString;
-      }
+        // AÑADIR ESTO: Aplicar filtros de color mediante la API de Cornerstone
+        viewport.colormap = undefined; // Resetea cualquier mapa de color previo
 
-      cornerstone.displayImage(element, image, viewport)
+        // Crear una función de renderizado personalizada para aplicar filtros CSS
+        const enabledElement = cornerstone.getEnabledElement(element);
+        if (enabledElement && enabledElement.canvas) {
+          // Aplicar filtros CSS al canvas
+          const filterString = `hue-rotate(${filters.red}deg) saturate(${filters.green}%) sepia(${filters.blue}%)`;
+          enabledElement.canvas.style.filter = filterString;
+        }
 
-      // Obtener espaciado de píxeles si está disponible
-      const imageMetadata = cornerstone.metaData.get("imagePlaneModule", imageId)
-      if (imageMetadata?.rowPixelSpacing) {
-        setPixelSpacing(imageMetadata.rowPixelSpacing)
-      } else if (study.pixelSpacing) {
-        setPixelSpacing(study.pixelSpacing)
-      }
+        cornerstone.displayImage(element, image, viewport)
 
-      // Actualizar tamaño del canvas de anotaciones
-      const canvas = annotationCanvasRef.current
-      const dicomCanvas = element.querySelector("canvas")
-      if (canvas && dicomCanvas) {
-        canvas.width = dicomCanvas.width
-        canvas.height = dicomCanvas.height
-        setViewportSize({ width: dicomCanvas.width, height: dicomCanvas.height })
-        drawAnnotations()
-      }
-    })
-    .catch(console.error)
+        // Obtener espaciado de píxeles si está disponible
+        const imageMetadata = cornerstone.metaData.get("imagePlaneModule", imageId)
+        if (imageMetadata?.rowPixelSpacing) {
+          setPixelSpacing(imageMetadata.rowPixelSpacing)
+        } else if (study.pixelSpacing) {
+          setPixelSpacing(study.pixelSpacing)
+        }
 
-  return () => {
-    cornerstone.disable(element)
-  }
-}, [study, currentImageIndex, zoom, rotation, brightness, contrast, filters]) // Añadir filters a las dependencias
+        // Actualizar tamaño del canvas de anotaciones
+        const canvas = annotationCanvasRef.current
+        const dicomCanvas = element.querySelector("canvas")
+        if (canvas && dicomCanvas) {
+          canvas.width = dicomCanvas.width
+          canvas.height = dicomCanvas.height
+          setViewportSize({ width: dicomCanvas.width, height: dicomCanvas.height })
+          drawAnnotations()
+        }
+      })
+      .catch(console.error)
+
+    return () => {
+      cornerstone.disable(element)
+    }
+  }, [study, currentImageIndex, zoom, rotation, brightness, contrast, filters]) // Añadir filters a las dependencias
 
   // Redimensionar el canvas cuando cambie el tamaño de la ventana
   useEffect(() => {
@@ -358,7 +356,7 @@ useEffect(() => {
 
       const distancePx = Math.sqrt(
         Math.pow(currentMeasurement.end.x - currentMeasurement.start.x, 2) +
-          Math.pow(currentMeasurement.end.y - currentMeasurement.start.y, 2),
+        Math.pow(currentMeasurement.end.y - currentMeasurement.start.y, 2),
       )
       const distanceMm = distancePx * pixelSpacing
 
@@ -632,11 +630,11 @@ useEffect(() => {
             {/* Botón de Reset */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  className={isDarkMode ? 
-                    "border-gray-500 hover:border-gray-400 bg-gray-800 hover:bg-gray-700 text-gray-100" : 
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className={isDarkMode ?
+                    "border-gray-500 hover:border-gray-400 bg-gray-800 hover:bg-gray-700 text-gray-100" :
                     "border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50 text-gray-800"
                   }
                   onClick={handleResetView}
@@ -655,16 +653,16 @@ useEffect(() => {
               {/* Botón JPG */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className={isDarkMode ? 
-                      "border-gray-500 hover:border-gray-400 bg-gray-800 hover:bg-gray-700 text-gray-100" : 
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={isDarkMode ?
+                      "border-gray-500 hover:border-gray-400 bg-gray-800 hover:bg-gray-700 text-gray-100" :
                       "border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50 text-gray-800"
                     }
                     onClick={() => exportAs("jpg")}
                   >
-                    <Download className={`h-4 w-4 mr-1 ${isDarkMode ? "text-white" : ""}`} /> 
+                    <Download className={`h-4 w-4 mr-1 ${isDarkMode ? "text-white" : ""}`} />
                     JPG
                   </Button>
                 </TooltipTrigger>
@@ -676,16 +674,16 @@ useEffect(() => {
               {/* Botón PNG */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className={isDarkMode ? 
-                      "border-gray-500 hover:border-gray-400 bg-gray-800 hover:bg-gray-700 text-gray-100" : 
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={isDarkMode ?
+                      "border-gray-500 hover:border-gray-400 bg-gray-800 hover:bg-gray-700 text-gray-100" :
                       "border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50 text-gray-800"
                     }
                     onClick={() => exportAs("png")}
                   >
-                    <Download className={`h-4 w-4 mr-1 ${isDarkMode ? "text-white" : ""}`} /> 
+                    <Download className={`h-4 w-4 mr-1 ${isDarkMode ? "text-white" : ""}`} />
                     PNG
                   </Button>
                 </TooltipTrigger>
@@ -697,16 +695,16 @@ useEffect(() => {
               {/* Botón PDF (destacado) */}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className={isDarkMode ? 
-                      "border-gray-500 hover:border-gray-400 bg-gray-800 hover:bg-gray-700 text-gray-100" : 
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={isDarkMode ?
+                      "border-gray-500 hover:border-gray-400 bg-gray-800 hover:bg-gray-700 text-gray-100" :
                       "border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50 text-gray-800"
                     }
                     onClick={() => exportAs("pdf")}
                   >
-                    <Download className={`h-4 w-4 mr-1 ${isDarkMode ? "text-white" : ""}`} /> 
+                    <Download className={`h-4 w-4 mr-1 ${isDarkMode ? "text-white" : ""}`} />
                     PDF
                   </Button>
                 </TooltipTrigger>
@@ -754,9 +752,9 @@ useEffect(() => {
               {/* Contenido de las pestañas */}
               <TabsContent value="tools" className="flex-1 p-0 m-0 overflow-hidden">
                 <div className={`p-3 ${isDarkMode ? "bg-gray-800" : "bg-gray-20"} rounded-md m-3`}>
-                <h3 className={`text-sm font-medium mb-2 ${isDarkMode ? "text-gray-100" : "text-gray-800"}`}>
-                  Herramientas de anotación
-                </h3>
+                  <h3 className={`text-sm font-medium mb-2 ${isDarkMode ? "text-gray-100" : "text-gray-800"}`}>
+                    Herramientas de anotación
+                  </h3>
                   <div className="grid grid-cols-3 gap-2">
                     <Button
                       variant={activeTool === "move" ? "default" : "outline"}
@@ -798,9 +796,9 @@ useEffect(() => {
                 </div>
 
                 <div className={`p-3 ${isDarkMode ? "bg-gray-800" : "bg-gray-50"} rounded-md m-3`}>
-                <h3 className={`text-sm font-medium mb-2 ${isDarkMode ? "text-gray-100" : "text-gray-800"}`}>
-                   Manipulación de imagen
-                </h3>
+                  <h3 className={`text-sm font-medium mb-2 ${isDarkMode ? "text-gray-100" : "text-gray-800"}`}>
+                    Manipulación de imagen
+                  </h3>
                   <div className="grid grid-cols-3 gap-2">
                     <Button
                       variant="outline"
@@ -920,7 +918,7 @@ useEffect(() => {
                           min={0}
                           max={360}
                           step={1}
-                          onValueChange={([v]) => setFilters({...filters, red: v})}
+                          onValueChange={([v]) => setFilters({ ...filters, red: v })}
                         />
                       </div>
 
@@ -935,7 +933,7 @@ useEffect(() => {
                           min={0}
                           max={200}
                           step={5}
-                          onValueChange={([v]) => setFilters({...filters, green: v})}
+                          onValueChange={([v]) => setFilters({ ...filters, green: v })}
                         />
                       </div>
 
@@ -950,7 +948,7 @@ useEffect(() => {
                           min={0}
                           max={100}
                           step={5}
-                          onValueChange={([v]) => setFilters({...filters, blue: v})}
+                          onValueChange={([v]) => setFilters({ ...filters, blue: v })}
                         />
                       </div>
                     </div>
